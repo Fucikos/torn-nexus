@@ -1,0 +1,19 @@
+# Environment
+.env
+.env.local
+.env.production
+
+# Dependencies
+node_modules/
+game-server/node_modules/
+
+# Prisma
+prisma/migrations/
+!prisma/schema.prisma
+
+# Vercel
+.vercel/
+
+# Misc
+.DS_Store
+*.log

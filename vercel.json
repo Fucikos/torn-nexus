@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build",
+  "outputDirectory": "client",
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "nodejs18.x",
+      "maxDuration": 10
+    }
+  },
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/client/$1"
+    }
+  ],
+  "env": {
+    "DATABASE_URL": "@database_url",
+    "JWT_SECRET": "@jwt_secret",
+    "HOUSE_TORN_ID": "@house_torn_id",
+    "HOUSE_API_KEY": "@house_api_key",
+    "ENCRYPTION_KEY": "@encryption_key",
+    "ADMIN_PASSWORD_HASH": "@admin_password_hash",
+    "GAME_SERVER_SECRET": "@game_server_secret"
+  }
+}
