@@ -147,13 +147,16 @@ async function loginSuccess(user) {
   await refreshWalletFromServer();
   await refreshStatsFromServer();
 
-  // Show topbar + navigate home
+  // Hide login page explicitly, show topbar, navigate home
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-home').classList.add('active');
   document.getElementById('topbar').style.display = 'flex';
+  document.getElementById('nav-home')?.classList.add('active');
   updateVerificationUI(true);
   startGamePolling();
   seedLeaderboard();
-  navigate('home');
   updateAllUI();
+  renderHomeFeed();
   showToast(`Welcome back, ${STATE.user.username}!`, 'success');
 
   // Reset login button
