@@ -7,25 +7,14 @@
       "maxDuration": 10
     }
   },
-  "routes": [
+  "rewrites": [
     {
-      "src": "^/$",
-      "dest": "/index.html"
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
     },
     {
-      "src": "^/admin$",
-      "dest": "/admin.html"
-    },
-    {
-      "src": "^/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
