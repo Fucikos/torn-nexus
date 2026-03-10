@@ -3,208 +3,613 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TORN NEXUS — Admin</title>
-  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet" />
-  <style>
-    :root {
-      --bg: #07070f; --panel: #0d0d1a; --border: #1a1a2e;
-      --accent: #00ff9d; --danger: #ff3355; --warn: #ffaa00;
-      --text: #dde0f0; --muted: #6a6a9a;
-      --font-mono: 'Share Tech Mono', monospace;
-      --font-body: 'Rajdhani', sans-serif;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: var(--font-body); background: var(--bg); color: var(--text); min-height: 100vh; padding: 32px 24px; }
-    h1 { font-family: var(--font-mono); color: var(--accent); letter-spacing: 4px; font-size: 22px; margin-bottom: 6px; }
-    .sub { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-bottom: 28px; }
-
-    /* Login */
-    #login-section { max-width: 380px; }
-    .field { margin-bottom: 14px; }
-    .field label { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; }
-    .field input { width: 100%; background: #0a0a14; border: 1px solid var(--border); border-radius: 6px; padding: 11px 14px; color: var(--text); font-family: var(--font-mono); font-size: 14px; outline: none; }
-    .field input:focus { border-color: var(--accent); }
-    .btn { background: var(--accent); color: #000; border: none; border-radius: 6px; padding: 12px 24px; font-family: var(--font-mono); font-size: 13px; letter-spacing: 2px; cursor: pointer; transition: opacity 0.2s; }
-    .btn:hover { opacity: 0.85; }
-    .btn.danger { background: var(--danger); color: #fff; }
-    .error { color: var(--danger); font-family: var(--font-mono); font-size: 11px; margin-top: 10px; }
-
-    /* Dashboard */
-    #dashboard { display: none; }
-    .stats-row { display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
-    .stat-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 24px; min-width: 180px; }
-    .stat-box .label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
-    .stat-box .value { font-family: var(--font-mono); font-size: 24px; color: var(--accent); }
-
-    /* Table */
-    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-    .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border); }
-    .panel-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
-    table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; }
-    th { padding: 11px 16px; font-size: 10px; letter-spacing: 2px; color: var(--muted); text-align: left; border-bottom: 1px solid var(--border); font-weight: 400; text-transform: uppercase; }
-    td { padding: 12px 16px; border-bottom: 1px solid #10101e; color: var(--text); vertical-align: middle; }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(255,255,255,0.02); }
-    .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 4px; font-size: 10px; letter-spacing: 1px; }
-    .badge.pending { background: rgba(255,170,0,0.12); border: 1px solid rgba(255,170,0,0.3); color: var(--warn); }
-    .fulfill-btn { background: rgba(0,255,157,0.1); border: 1px solid rgba(0,255,157,0.3); color: var(--accent); border-radius: 5px; padding: 6px 14px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; transition: all 0.2s; }
-    .fulfill-btn:hover { background: var(--accent); color: #000; }
-    .empty { text-align: center; padding: 40px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: 2px; }
-    .refresh-btn { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 5px; padding: 6px 14px; font-family: var(--font-mono); font-size: 10px; cursor: pointer; letter-spacing: 1px; transition: all 0.2s; }
-    .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
-    .toast { position: fixed; top: 20px; right: 20px; background: var(--panel); border-left: 3px solid var(--accent); padding: 12px 18px; font-family: var(--font-mono); font-size: 12px; color: var(--accent); border-radius: 6px; animation: fade-in 0.2s ease; }
-    @keyframes fade-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; } }
-  </style>
+  <title>TORN NEXUS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
-<h1>TORN NEXUS · ADMIN</h1>
-<div class="sub">OPERATOR PANEL — WITHDRAWAL MANAGEMENT</div>
+<div id="app">
 
-<!-- LOGIN -->
-<section id="login-section">
-  <div class="field">
-    <label>Admin Password</label>
-    <input type="password" id="admin-pass" placeholder="••••••••••••" />
-  </div>
-  <button class="btn" onclick="adminLogin()">AUTHENTICATE</button>
-  <div class="error" id="login-error"></div>
-</section>
-
-<!-- DASHBOARD -->
-<section id="dashboard">
-  <div class="stats-row">
-    <div class="stat-box">
-      <div class="label">Pending Withdrawals</div>
-      <div class="value" id="stat-count">—</div>
+  <!-- TOPBAR (hidden until login) -->
+  <header id="topbar">
+    <div class="topbar-logo" onclick="navigate('home')" title="Home">
+      <span class="logo-main">TORN NEXUS</span>
+      <span class="logo-sub">UNDERGROUND EXCHANGE</span>
     </div>
-    <div class="stat-box">
-      <div class="label">Total Owed</div>
-      <div class="value" id="stat-total">—</div>
+    <nav class="topbar-nav">
+      <button class="nav-btn" id="nav-home"        onclick="navigate('home')">Home</button>
+      <button class="nav-btn" id="nav-wallet"      onclick="navigate('wallet')">Wallet</button>
+      <button class="nav-btn" id="nav-game"        onclick="navigate('game')">Game</button>
+      <button class="nav-btn" id="nav-leaderboard" onclick="navigate('leaderboard')">Leaderboard</button>
+      <button class="nav-btn" id="nav-stats"       onclick="navigate('stats')">Stats</button>
+    </nav>
+    <div class="topbar-right">
+      <div class="balance-pill">
+        <span class="bp-icon">◈</span>
+        <span class="bp-amount" id="topbar-balance">$0</span>
+      </div>
+      <div class="user-pill">
+        <span class="user-dot"></span>
+        <span id="topbar-username">—</span>
+      </div>
+      <button class="btn-logout" onclick="logout()">Logout</button>
+      <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleMobileNav()" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
     </div>
-    <div class="stat-box">
-      <div class="label">House Balance</div>
-      <div class="value" id="stat-house">—</div>
+  </header>
+
+  <!-- Mobile dropdown nav -->
+  <nav class="mobile-nav-dropdown" id="mobile-nav-dropdown">
+    <button class="nav-btn" onclick="navigate('home');closeMobileNav()">Home</button>
+    <button class="nav-btn" onclick="navigate('wallet');closeMobileNav()">Wallet</button>
+    <button class="nav-btn" onclick="navigate('game');closeMobileNav()">Game</button>
+    <button class="nav-btn" onclick="navigate('leaderboard');closeMobileNav()">Leaderboard</button>
+    <button class="nav-btn" onclick="navigate('stats');closeMobileNav()">Stats</button>
+  </nav>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
+
+  <!-- MAIN CONTENT -->
+  <main id="main-content">
+
+    <!-- ══════════════════════════════════════
+         LOGIN PAGE
+    ══════════════════════════════════════ -->
+    <div id="page-login" class="page active">
+      <div class="login-grid-art"></div>
+      <div class="login-wrap">
+        <div class="login-card">
+
+          <div class="login-logo">
+            <span class="ll-main">TORN<br>NEXUS</span>
+            <span class="ll-sub">Underground Betting Exchange</span>
+          </div>
+
+          <div class="login-divider"></div>
+
+          <div class="form-group">
+            <div class="form-label">
+              Torn Username
+              <span class="fl-hint">Case-sensitive</span>
+            </div>
+            <input id="login-username" class="form-input" type="text"
+              placeholder="YourTornName" autocomplete="off" spellcheck="false" />
+          </div>
+
+          <div class="form-group">
+            <div class="form-label">
+              API Key
+              <span class="fl-hint">Limited access only</span>
+            </div>
+            <input id="login-apikey" class="form-input" type="password"
+              placeholder="••••••••••••••••" autocomplete="off" />
+          </div>
+
+          <button id="login-btn" class="btn-primary" onclick="doLogin()">
+            ACCESS NEXUS
+          </button>
+
+          <div id="login-error" class="error-msg"></div>
+
+          <p class="login-note">
+            Your API key is verified server-side and stored AES-256 encrypted —
+            never exposed to the browser after login.<br><br>
+            Get a <strong>Limited Access</strong> key at
+            <a href="https://www.torn.com/preferences.php#tab=api" target="_blank" rel="noopener">
+              torn.com → Settings → API
+            </a>
+          </p>
+
+        </div>
+      </div>
     </div>
-  </div>
+    <!-- /LOGIN -->
 
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Pending Withdrawals</span>
-      <button class="refresh-btn" onclick="loadWithdrawals()">↻ REFRESH</button>
+
+    <!-- ══════════════════════════════════════
+         HOME PAGE
+    ══════════════════════════════════════ -->
+    <div id="page-home" class="page">
+      <div class="page-inner">
+
+        <div class="section-header">
+          <div class="section-title">WELCOME BACK, <span id="home-username">PLAYER</span></div>
+          <div class="section-sub">Underground Betting Exchange</div>
+        </div>
+
+        <div class="home-stats-grid">
+          <div class="stat-card sc-green">
+            <div class="sc-label">Site Balance</div>
+            <div class="sc-value" id="home-balance">$0</div>
+            <div class="sc-sub">Available to wager</div>
+          </div>
+          <div class="stat-card sc-gold">
+            <div class="sc-label">Total Wagered</div>
+            <div class="sc-value" id="home-wagered">$0</div>
+            <div class="sc-sub">All-time volume</div>
+          </div>
+          <div class="stat-card sc-dim" id="home-pnl-card">
+            <div class="sc-label">Net P&amp;L</div>
+            <div class="sc-value" id="home-pnl">$0</div>
+            <div class="sc-sub">Profit / loss</div>
+          </div>
+        </div>
+
+        <div class="home-lower">
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">Live Feed</span>
+              <span class="live-dot" title="Live"></span>
+            </div>
+            <div id="home-live-feed">
+              <div class="empty-state">
+                <span class="es-icon">📡</span>
+                Waiting for round activity…
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <span class="panel-title">Recent Rounds</span>
+              <span id="home-round-count" style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)"></span>
+            </div>
+            <div id="home-recent-games">
+              <div class="empty-state">
+                <span class="es-icon">🎮</span>
+                No rounds played yet
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <footer class="page-footer">
+          TORN NEXUS is a fan-made platform. Not affiliated with
+          <a href="https://www.torn.com" target="_blank" rel="noopener">Torn City</a>.
+          All currency is Torn in-game dollars only.
+        </footer>
+
+      </div>
     </div>
-    <div id="table-wrap">
-      <div class="empty">Loading…</div>
+    <!-- /HOME -->
+
+
+    <!-- ══════════════════════════════════════
+         WALLET PAGE
+    ══════════════════════════════════════ -->
+    <div id="page-wallet" class="page">
+      <div class="page-inner">
+
+        <div class="section-header">
+          <div class="section-title">WALLET <span>SYSTEM</span></div>
+          <div class="section-sub">Deposit · Withdraw · Track</div>
+        </div>
+
+        <div class="info-box">
+          <span class="ib-icon">ℹ️</span>
+          Deposits are verified against the house account's live Torn transaction log via the server.
+          Your API key is never exposed — all verification happens server-side.
+          Withdrawals are fulfilled manually by the operator, typically within 24 hours.
+        </div>
+
+        <!-- Balance card -->
+        <div class="wallet-balance-card">
+          <div class="wbc-label">Available Site Balance</div>
+          <div class="wbc-amount">
+            <span class="wbc-currency">$</span>
+            <span class="wbc-figure" id="wallet-balance-figure">0</span>
+          </div>
+          <div class="wbc-torn-balance">
+            Torn wallet: <span class="wbt-val" id="wallet-torn-bal">Verified server-side</span>
+          </div>
+          <div class="wbc-stats-row">
+            <div class="wbc-stat">
+              <div class="wbc-stat-label">Total Deposited</div>
+              <div class="wbc-stat-val" id="wallet-total-dep">$0</div>
+            </div>
+            <div class="wbc-stat">
+              <div class="wbc-stat-label">Total Withdrawn</div>
+              <div class="wbc-stat-val" id="wallet-total-with">$0</div>
+            </div>
+            <div class="wbc-stat">
+              <div class="wbc-stat-label">Net P&amp;L</div>
+              <div class="wbc-stat-val" id="wallet-net-pnl">$0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action grid -->
+        <div class="wallet-action-grid">
+
+          <!-- Deposit / Withdraw -->
+          <div class="action-card">
+            <div class="action-card-title">Deposit &amp; Withdraw</div>
+
+            <div class="info-box" style="margin-bottom:16px;font-size:10px;line-height:1.8;">
+              <span class="ib-icon">📋</span>
+              To deposit: send Torn $ to the house account in-game, then paste the
+              <strong style="color:var(--accent)">Torn Transaction ID</strong>
+              from your event log below alongside the amount.
+            </div>
+
+            <div class="amount-field-wrap">
+              <span class="amount-prefix">$</span>
+              <input id="wallet-amount" class="amount-input" type="number"
+                placeholder="0" min="1000" />
+            </div>
+
+            <div class="quick-amounts">
+              <button class="qa-btn" onclick="setDepAmt(10000)">10K</button>
+              <button class="qa-btn" onclick="setDepAmt(50000)">50K</button>
+              <button class="qa-btn" onclick="setDepAmt(100000)">100K</button>
+              <button class="qa-btn" onclick="setDepAmt(500000)">500K</button>
+            </div>
+
+            <!-- Torn Transaction ID — required for deposits -->
+            <div class="form-group" style="margin-bottom:14px;">
+              <div class="form-label" style="font-size:10px;letter-spacing:1.5px;">
+                Torn Transaction ID
+                <span class="fl-hint">Deposits only — from your Torn event log</span>
+              </div>
+              <input id="wallet-torntx" class="form-input" type="number"
+                placeholder="e.g. 987654321" autocomplete="off"
+                style="padding:10px 14px;font-size:13px;" />
+            </div>
+
+            <button id="btn-deposit"  class="btn-deposit"  onclick="doDeposit()">DEPOSIT FUNDS</button>
+            <button id="btn-withdraw" class="btn-withdraw" onclick="doWithdraw()">WITHDRAW TO TORN</button>
+
+            <div id="wallet-error" class="wallet-error"></div>
+          </div>
+
+          <!-- Verification status -->
+          <div class="action-card">
+            <div class="action-card-title">Verification Status</div>
+
+            <div class="verif-row">
+              <span class="verif-key">API Key Valid</span>
+              <span class="verif-val pending" id="v-api">⏳ Pending</span>
+            </div>
+            <div class="verif-row">
+              <span class="verif-key">Identity Verified</span>
+              <span class="verif-val pending" id="v-identity">⏳ Pending</span>
+            </div>
+            <div class="verif-row">
+              <span class="verif-key">Server Connection</span>
+              <span class="verif-val ok" id="v-ratelimit">✓ OK</span>
+            </div>
+            <div class="verif-row">
+              <span class="verif-key">Anti-Cheat</span>
+              <span class="verif-val ok" id="v-anticheat">✓ Active</span>
+            </div>
+
+            <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+              <div class="action-card-title" style="margin-bottom:12px;">How to find your Transaction ID</div>
+              <ol style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);line-height:2;padding-left:16px;">
+                <li>Open Torn City in-game</li>
+                <li>Go to your <strong style="color:var(--text-dim)">Events log</strong></li>
+                <li>Find the money send confirmation entry</li>
+                <li>The numeric ID at the end is your Transaction ID</li>
+              </ol>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Transaction history -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Transaction History</span>
+            <span id="tx-count" style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)"></span>
+          </div>
+          <div class="tx-list" id="tx-list">
+            <div class="empty-state">
+              <span class="es-icon">📋</span>
+              No transactions yet — make your first deposit
+            </div>
+          </div>
+        </div>
+
+        <footer class="page-footer">
+          TORN NEXUS is a fan-made platform. Not affiliated with
+          <a href="https://www.torn.com" target="_blank" rel="noopener">Torn City</a>.
+          All currency is Torn in-game dollars only.
+        </footer>
+
+      </div>
     </div>
-  </div>
-</section>
+    <!-- /WALLET -->
 
-<script>
-  let adminToken = ''
 
-  function fmt(n) {
-    const abs = Math.abs(Number(n))
-    if (abs >= 1e9) return '$' + (Number(n)/1e9).toFixed(2) + 'B'
-    if (abs >= 1e6) return '$' + (Number(n)/1e6).toFixed(2) + 'M'
-    if (abs >= 1e3) return '$' + (Number(n)/1e3).toFixed(1) + 'K'
-    return '$' + Number(n).toLocaleString()
-  }
+    <!-- ══════════════════════════════════════
+         GAME PAGE
+    ══════════════════════════════════════ -->
+    <div id="page-game" class="page">
+      <div class="page-inner">
 
-  async function adminLogin() {
-    const pass = document.getElementById('admin-pass').value.trim()
-    if (!pass) return
-    // Store token and try to load data — the API will 403 if wrong
-    adminToken = pass
-    const res = await fetch('/api/admin/withdrawals', {
-      headers: { 'Authorization': `Bearer ${pass}` }
-    })
-    if (res.status === 403) {
-      document.getElementById('login-error').textContent = 'Incorrect password.'
-      adminToken = ''
-      return
-    }
-    document.getElementById('login-section').style.display = 'none'
-    document.getElementById('dashboard').style.display = 'block'
-    const data = await res.json()
-    renderDashboard(data)
-  }
+        <div class="game-title-bar">
+          <div class="game-title">NEXUS <span>SURGE</span></div>
+          <span class="game-badge original">⚡ Original Game</span>
+          <span class="game-badge house-edge">House Edge: 3%</span>
+        </div>
 
-  async function loadWithdrawals() {
-    const res  = await fetch('/api/admin/withdrawals', {
-      headers: { 'Authorization': `Bearer ${adminToken}` }
-    })
-    const data = await res.json()
-    renderDashboard(data)
-  }
+        <div class="game-layout">
 
-  function renderDashboard(data) {
-    document.getElementById('stat-count').textContent = data.pendingCount ?? 0
-    document.getElementById('stat-total').textContent = fmt(data.pendingTotalAmount ?? 0)
-    document.getElementById('stat-house').textContent = data.houseBalance != null ? fmt(data.houseBalance) : 'N/A'
+          <!-- MAIN ARENA -->
+          <div class="game-main">
+            <div class="arena-panel">
 
-    const wrap = document.getElementById('table-wrap')
-    if (!data.withdrawals || data.withdrawals.length === 0) {
-      wrap.innerHTML = '<div class="empty">No pending withdrawals ✓</div>'
-      return
-    }
+              <div class="result-flash" id="result-flash">
+                <div class="result-flash-inner" id="result-flash-inner"></div>
+              </div>
 
-    wrap.innerHTML = `
-      <table>
-        <thead>
-          <tr>
-            <th>#</th><th>Player</th><th>Torn ID</th><th>Amount</th><th>Requested</th><th>Status</th><th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${data.withdrawals.map(w => `
-            <tr id="row-${w.id}">
-              <td>${w.id}</td>
-              <td>${w.username}</td>
-              <td>${w.tornId}</td>
-              <td style="color:var(--danger);font-weight:700">${fmt(w.amount)}</td>
-              <td style="color:var(--muted);font-size:11px">${new Date(w.createdAt).toLocaleString()}</td>
-              <td><span class="badge pending">PENDING</span></td>
-              <td>
-                <button class="fulfill-btn" onclick="fulfill(${w.id}, '${w.username}', '${w.amount}')">
-                  MARK SENT
-                </button>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>`
-  }
+              <p class="arena-desc">
+                A multiplier climbs from 1.00× and crashes at an unknown point each round.<br>
+                Place your bet during BETTING, then cash out before the crash to win.<br>
+                Miss the window and your bet is lost. Crash point determined server-side — provably fair.
+              </p>
 
-  async function fulfill(id, username, amount) {
-    if (!confirm(`Mark withdrawal #${id} for ${username} (${fmt(amount)}) as fulfilled?\n\nMake sure you have already sent the money in Torn.`)) return
+              <div class="phase-row">
+                <div class="phase-tag betting" id="phase-tag">
+                  <span class="pt-dot"></span>
+                  <span id="phase-label">Betting Open</span>
+                </div>
+                <span class="phase-timer" id="phase-timer">Connecting to server…</span>
+              </div>
 
-    const res = await fetch('/api/admin/withdrawals', {
-      method:  'POST',
-      headers: { 'Authorization': `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ transactionId: id }),
-    })
+              <div class="mult-display-wrap">
+                <span class="mult-value green" id="mult-value">1.00×</span>
+                <span class="mult-sub-label" id="mult-sub">WAITING FOR ROUND</span>
+              </div>
 
-    const data = await res.json()
-    if (!res.ok) { alert('Error: ' + data.error); return }
+              <div class="checkpoints" id="checkpoints">
+                <div class="checkpoint" data-target="1.5">
+                  <span class="cp-dot"></span><span class="cp-label">1.5×</span>
+                </div>
+                <div class="checkpoint" data-target="2">
+                  <span class="cp-dot"></span><span class="cp-label">2×</span>
+                </div>
+                <div class="checkpoint" data-target="3">
+                  <span class="cp-dot"></span><span class="cp-label">3×</span>
+                </div>
+                <div class="checkpoint" data-target="5">
+                  <span class="cp-dot"></span><span class="cp-label">5×</span>
+                </div>
+                <div class="checkpoint" data-target="10">
+                  <span class="cp-dot"></span><span class="cp-label">10×</span>
+                </div>
+              </div>
 
-    // Remove row from table
-    document.getElementById(`row-${id}`)?.remove()
-    showToast(`Withdrawal #${id} marked as fulfilled.`)
-    loadWithdrawals()
-  }
+              <div class="progress-track">
+                <div class="progress-fill green" id="progress-fill"></div>
+              </div>
 
-  function showToast(msg) {
-    const t = document.createElement('div')
-    t.className = 'toast'
-    t.textContent = msg
-    document.body.appendChild(t)
-    setTimeout(() => t.remove(), 3000)
-  }
+              <div class="game-controls">
+                <div class="controls-row">
+                  <div class="ctrl-group">
+                    <label class="ctrl-label" for="bet-amount">Bet Amount ($)</label>
+                    <input id="bet-amount" class="ctrl-input" type="number"
+                      placeholder="e.g. 5000" min="100" />
+                  </div>
+                  <button id="btn-bet"     class="btn-bet"     onclick="placeBet()">BET</button>
+                  <button id="btn-cashout" class="btn-cashout" onclick="cashOut()">CASH OUT</button>
+                </div>
 
-  // Auto-login on Enter
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Enter') adminLogin()
-  })
-</script>
+                <div class="autocashout-row">
+                  <label class="toggle-wrap">
+                    <input type="checkbox" id="aco-enabled" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <span class="aco-label">Auto cash-out at</span>
+                  <input id="aco-value" class="aco-input" type="number"
+                    value="2.00" step="0.1" min="1.01" max="1000" />
+                  <span class="aco-label">×</span>
+                </div>
+
+                <div class="bet-status" id="bet-status">Place your bet before the round starts.</div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- SIDEBAR -->
+          <div class="game-sidebar">
+
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">Round History</span>
+                <span id="round-counter" style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)">0 rounds</span>
+              </div>
+              <div id="round-history" style="max-height:220px;overflow-y:auto;">
+                <div class="empty-state" style="padding:24px 16px">
+                  <span class="es-icon">🕐</span>No rounds yet
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">Active Players</span>
+                <span class="live-dot"></span>
+              </div>
+              <div id="active-players" style="max-height:220px;overflow-y:auto;">
+                <div class="empty-state" style="padding:24px 16px">
+                  <span class="es-icon">⌛</span>Waiting for next round
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">My Stats</span>
+              </div>
+              <div class="mini-stats-grid">
+                <div class="ms-cell">
+                  <div class="ms-label">Win Rate</div>
+                  <div class="ms-value accent" id="gs-winrate">0%</div>
+                </div>
+                <div class="ms-cell">
+                  <div class="ms-label">Rounds</div>
+                  <div class="ms-value" id="gs-rounds">0</div>
+                </div>
+                <div class="ms-cell">
+                  <div class="ms-label">Best Mult</div>
+                  <div class="ms-value warn" id="gs-best-mult">—</div>
+                </div>
+                <div class="ms-cell">
+                  <div class="ms-label">Biggest Win</div>
+                  <div class="ms-value accent" id="gs-biggest-win">—</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <footer class="page-footer">
+          TORN NEXUS is a fan-made platform. Not affiliated with
+          <a href="https://www.torn.com" target="_blank" rel="noopener">Torn City</a>.
+          All currency is Torn in-game dollars only.
+        </footer>
+
+      </div>
+    </div>
+    <!-- /GAME -->
+
+
+    <!-- ══════════════════════════════════════
+         LEADERBOARD PAGE
+    ══════════════════════════════════════ -->
+    <div id="page-leaderboard" class="page">
+      <div class="page-inner">
+
+        <div class="section-header">
+          <div class="section-title">LEADER <span>BOARD</span></div>
+          <div class="section-sub">All-time rankings across all players</div>
+        </div>
+
+        <div class="lb-tabs">
+          <button class="lb-tab active" onclick="setLbTab('profit', this)">Top Profit</button>
+          <button class="lb-tab"        onclick="setLbTab('wins', this)">Most Wins</button>
+          <button class="lb-tab"        onclick="setLbTab('wagered', this)">Most Wagered</button>
+        </div>
+
+        <div class="panel">
+          <div class="lb-table-wrap">
+            <table class="lb-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Player</th>
+                  <th>Rounds</th>
+                  <th>Wins</th>
+                  <th>Win Rate</th>
+                  <th>Wagered</th>
+                  <th>Net Profit</th>
+                  <th>Best Mult</th>
+                </tr>
+              </thead>
+              <tbody id="lb-tbody">
+                <tr>
+                  <td colspan="8">
+                    <div class="empty-state">
+                      <span class="es-icon">⏳</span>
+                      Loading rankings…
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <footer class="page-footer">
+          TORN NEXUS is a fan-made platform. Not affiliated with
+          <a href="https://www.torn.com" target="_blank" rel="noopener">Torn City</a>.
+          All currency is Torn in-game dollars only.
+        </footer>
+
+      </div>
+    </div>
+    <!-- /LEADERBOARD -->
+
+
+    <!-- ══════════════════════════════════════
+         STATS PAGE
+    ══════════════════════════════════════ -->
+    <div id="page-stats" class="page">
+      <div class="page-inner">
+
+        <div class="section-header">
+          <div class="section-title">MY <span>STATS</span></div>
+          <div class="section-sub">Personal performance breakdown</div>
+        </div>
+
+        <div class="stats-grid-4">
+          <div class="stat-card sc-green" id="st-winrate-card">
+            <div class="sc-label">Win Rate</div>
+            <div class="sc-value" id="st-winrate">0%</div>
+            <div class="sc-sub" id="st-wl">0W / 0L</div>
+          </div>
+          <div class="stat-card sc-gold">
+            <div class="sc-label">Best Multiplier</div>
+            <div class="sc-value" id="st-bestmult">—</div>
+            <div class="sc-sub">Highest cash-out</div>
+          </div>
+          <div class="stat-card sc-dim">
+            <div class="sc-label">Avg Cash-Out</div>
+            <div class="sc-value" id="st-avgmult">—</div>
+            <div class="sc-sub">Multiplier average</div>
+          </div>
+          <div class="stat-card sc-dim" id="st-pnl-card">
+            <div class="sc-label">Net P&amp;L</div>
+            <div class="sc-value" id="st-pnl">$0</div>
+            <div class="sc-sub">All-time</div>
+          </div>
+        </div>
+
+        <div class="chart-panel">
+          <div class="chart-title">Recent Round P&amp;L (last 30)</div>
+          <div class="mini-chart" id="pnl-chart">
+            <div class="chart-empty">
+              <span class="ce-icon">📊</span>
+              No round data yet
+            </div>
+          </div>
+        </div>
+
+        <div class="streak-panel">
+          <div class="panel-header">
+            <span class="panel-title">Win / Loss Streak</span>
+            <span id="streak-summary" style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted)"></span>
+          </div>
+          <div class="streak-dots-wrap" id="streak-dots">
+            <div class="empty-state" style="width:100%;padding:16px 0">
+              <span class="es-icon">🎯</span>
+              Play some rounds to build your streak
+            </div>
+          </div>
+        </div>
+
+        <footer class="page-footer">
+          TORN NEXUS is a fan-made platform. Not affiliated with
+          <a href="https://www.torn.com" target="_blank" rel="noopener">Torn City</a>.
+          All currency is Torn in-game dollars only.
+        </footer>
+
+      </div>
+    </div>
+    <!-- /STATS -->
+
+  </main>
+
+</div><!-- /#app -->
+
+<script src="main.js" defer></script>
 </body>
 </html>
