@@ -4,7 +4,6 @@
   "outputDirectory": "client",
   "functions": {
     "api/**/*.js": {
-      "runtime": "nodejs18.x",
       "maxDuration": 10
     }
   },
@@ -17,15 +16,5 @@
       "src": "/(.*)",
       "dest": "/client/$1"
     }
-  ],
-  "env": {
-    "DATABASE_URL": "",
-    "DIRECT_URL": "",
-    "JWT_SECRET": "",
-    "HOUSE_TORN_ID": "",
-    "HOUSE_API_KEY": "",
-    "ENCRYPTION_KEY": "",
-    "ADMIN_PASSWORD_HASH": "",
-    "GAME_SERVER_SECRET": ""
-  }
+  ]
 }
