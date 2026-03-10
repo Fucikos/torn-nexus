@@ -11,18 +11,6 @@
     {
       "src": "^/api/(.*)",
       "dest": "/api/$1"
-    },
-    {
-      "src": "^/$",
-      "dest": "/client/index.html"
-    },
-    {
-      "src": "^/admin$",
-      "dest": "/client/admin.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/client/$1"
     }
   ]
 }
