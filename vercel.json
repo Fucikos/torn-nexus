@@ -19,12 +19,13 @@
     }
   ],
   "env": {
-    "DATABASE_URL": "@database_url",
-    "JWT_SECRET": "@jwt_secret",
-    "HOUSE_TORN_ID": "@house_torn_id",
-    "HOUSE_API_KEY": "@house_api_key",
-    "ENCRYPTION_KEY": "@encryption_key",
-    "ADMIN_PASSWORD_HASH": "@admin_password_hash",
-    "GAME_SERVER_SECRET": "@game_server_secret"
+    "DATABASE_URL": "",
+    "DIRECT_URL": "",
+    "JWT_SECRET": "",
+    "HOUSE_TORN_ID": "",
+    "HOUSE_API_KEY": "",
+    "ENCRYPTION_KEY": "",
+    "ADMIN_PASSWORD_HASH": "",
+    "GAME_SERVER_SECRET": ""
   }
 }
