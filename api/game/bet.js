@@ -1,75 +1,36 @@
-// api/game/bet.js
-// POST /api/game/bet
-// Places a bet for the current round. Only allowed during BETTING phase.
+import { requireAuth } from '../../lib/auth.js'
+import { prisma }      from '../../lib/prisma.js'
+import { handleCors }  from '../../lib/response.js'
 
-import { requireAuth }         from '../../lib/auth.js'
-import { prisma }              from '../../lib/prisma.js'
-import { ok, err, handleCors } from '../../lib/response.js'
+export default async function handler(req, res) {
+  if (handleCors(req, res)) return
+  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return }
 
-const MIN_BET = 100
-const MAX_BET = 10_000_000
+  const user = await requireAuth(req, res)
+  if (!user) return
 
-export default async function handler(req) {
-  const cors = handleCors(req)
-  if (cors) return cors
-
-  if (req.method !== 'POST') return err('Method not allowed', 405)
-
-  const user = await requireAuth(req)
-  if (user instanceof Response) return user
-
-  let body
-  try { body = await req.json() } catch { return err('Invalid JSON body') }
-
-  const { amount } = body
-
-  if (!amount || typeof amount !== 'number') return err('amount must be a number.')
-  if (amount < MIN_BET) return err(`Minimum bet is $${MIN_BET.toLocaleString()}.`)
-  if (amount > MAX_BET) return err(`Maximum bet is $${MAX_BET.toLocaleString()}.`)
+  const { amount } = req.body ?? {}
+  if (!amount || typeof amount !== 'number') { res.status(400).json({ error: 'amount must be a number.' }); return }
+  if (amount < 100)       { res.status(400).json({ error: 'Minimum bet is $100.' }); return }
+  if (amount > 10000000)  { res.status(400).json({ error: 'Maximum bet is $10,000,000.' }); return }
 
   const amountBig = BigInt(Math.floor(amount))
-
-  // ── Validate game phase ────────────────────────────────────────────────
   const state = await prisma.gameState.findUnique({ where: { id: 1 } })
-  if (!state || state.phase !== 'BETTING') {
-    return err('Betting is closed for this round.', 409)
-  }
+  if (!state || state.phase !== 'BETTING') { res.status(409).json({ error: 'Betting is closed for this round.' }); return }
 
-  // ── Check balance ──────────────────────────────────────────────────────
   const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
-  if (!wallet || wallet.balance < amountBig) {
-    return err('Insufficient balance.', 422)
-  }
+  if (!wallet || wallet.balance < amountBig) { res.status(422).json({ error: 'Insufficient balance.' }); return }
 
-  // ── Check no existing bet this round ──────────────────────────────────
   const existing = await prisma.bet.findUnique({
-    where: {
-      userId_roundId: { userId: user.id, roundId: state.roundId },
-    },
+    where: { userId_roundId: { userId: user.id, roundId: state.roundId } },
   })
-  if (existing) return err('You already have a bet this round.', 409)
+  if (existing) { res.status(409).json({ error: 'You already have a bet this round.' }); return }
 
-  // ── Debit balance + create bet atomically ─────────────────────────────
   await prisma.$transaction([
-    prisma.wallet.update({
-      where: { userId: user.id },
-      data:  { balance: { decrement: amountBig } },
-    }),
-    prisma.bet.create({
-      data: {
-        userId:  user.id,
-        roundId: state.roundId,
-        amount:  amountBig,
-        payout:  BigInt(0),
-      },
-    }),
+    prisma.wallet.update({ where: { userId: user.id }, data: { balance: { decrement: amountBig } } }),
+    prisma.bet.create({ data: { userId: user.id, roundId: state.roundId, amount: amountBig, payout: BigInt(0) } }),
   ])
 
   const updatedWallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
-
-  return ok({
-    message: `Bet of $${amount.toLocaleString()} placed for round #${state.roundId}.`,
-    balance: updatedWallet.balance.toString(),
-    roundId: state.roundId,
-  })
+  res.status(200).json({ message: `Bet placed for round #${state.roundId}.`, balance: updatedWallet.balance.toString(), roundId: state.roundId })
 }

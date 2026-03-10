@@ -1,16 +1,25 @@
 {
-  "name": "torn-nexus-game-server",
+  "name": "torn-nexus",
   "version": "1.0.0",
-  "description": "Persistent crash game loop — deploy to Railway",
+  "description": "Torn City underground betting exchange",
+  "private": true,
   "type": "module",
-  "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "postinstall": "prisma generate"
+    "dev": "vercel dev",
+    "build": "prisma generate",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^5.10.0",
-    "prisma": "^5.10.0"
+    "@prisma/client": "5.10.0",
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.2.3",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "prisma": "5.10.0",
+    "vercel": "^33.5.0"
   },
   "engines": {
     "node": ">=18.0.0"

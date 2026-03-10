@@ -1,90 +1,42 @@
-// api/game/history.js
-// GET /api/game/history  — last 20 completed rounds
-// GET /api/game/leaderboard — all-time player rankings
+import { requireAuth } from '../../lib/auth.js'
+import { prisma }      from '../../lib/prisma.js'
+import { handleCors }  from '../../lib/response.js'
 
-import { requireAuth }         from '../../lib/auth.js'
-import { prisma }              from '../../lib/prisma.js'
-import { ok, err, handleCors } from '../../lib/response.js'
+export default async function handler(req, res) {
+  if (handleCors(req, res)) return
+  if (req.method !== 'GET') { res.status(405).json({ error: 'Method not allowed' }); return }
 
-export default async function handler(req) {
-  const cors = handleCors(req)
-  if (cors) return cors
+  const user = await requireAuth(req, res)
+  if (!user) return
 
-  if (req.method !== 'GET') return err('Method not allowed', 405)
+  const type = req.query?.type ?? 'history'
+  const sort = req.query?.sort ?? 'profit'
 
-  const user = await requireAuth(req)
-  if (user instanceof Response) return user
-
-  const url  = new URL(req.url, 'http://localhost')
-  const type = url.searchParams.get('type') ?? 'history'
-
-  // ── Round history ──────────────────────────────────────────────────────
   if (type === 'history') {
     const rounds = await prisma.round.findMany({
-      where:   { phase: 'CRASHED' },
-      orderBy: { endedAt: 'desc' },
-      take:    20,
-      include: {
-        bets: {
-          where: { userId: user.id },
-          select: { amount: true, cashoutMult: true, payout: true },
-        },
-      },
+      where: { phase: 'CRASHED' }, orderBy: { endedAt: 'desc' }, take: 20,
+      include: { bets: { where: { userId: user.id }, select: { amount: true, cashoutMult: true, payout: true } } },
     })
-
-    return ok(rounds.map(r => ({
-      id:         r.id,
-      crashPoint: r.crashPoint.toString(),
-      endedAt:    r.endedAt?.toISOString(),
-      myBet:      r.bets[0] ? {
-        amount:      r.bets[0].amount.toString(),
-        cashoutMult: r.bets[0].cashoutMult?.toString() ?? null,
-        payout:      r.bets[0].payout.toString(),
-      } : null,
+    res.status(200).json(rounds.map(r => ({
+      id: r.id, crashPoint: r.crashPoint.toString(), endedAt: r.endedAt?.toISOString(),
+      myBet: r.bets[0] ? { amount: r.bets[0].amount.toString(), cashoutMult: r.bets[0].cashoutMult?.toString() ?? null, payout: r.bets[0].payout.toString() } : null,
     })))
+    return
   }
 
-  // ── Leaderboard ───────────────────────────────────────────────────────
   if (type === 'leaderboard') {
-    const sort  = url.searchParams.get('sort') ?? 'profit'  // profit | wins | wagered
-    const users = await prisma.user.findMany({
-      include: {
-        bets: {
-          select: { amount: true, cashoutMult: true, payout: true },
-        },
-      },
-    })
-
+    const users = await prisma.user.findMany({ include: { bets: { select: { amount: true, cashoutMult: true, payout: true } } } })
     const rows = users.map(u => {
-      const totalRounds  = u.bets.length
-      const wins         = u.bets.filter(b => b.cashoutMult !== null).length
+      const wins = u.bets.filter(b => b.cashoutMult !== null).length
       const totalWagered = u.bets.reduce((s, b) => s + Number(b.amount), 0)
-      const totalWon     = u.bets.reduce((s, b) => s + Number(b.payout), 0)
-      const profit       = totalWon - totalWagered
-      const bestMult     = u.bets.reduce((m, b) => {
-        const v = b.cashoutMult ? parseFloat(b.cashoutMult.toString()) : 0
-        return v > m ? v : m
-      }, 0)
-
-      return {
-        username: u.username,
-        isMe:     u.id === user.id,
-        rounds:   totalRounds,
-        wins,
-        wagered:  totalWagered,
-        profit,
-        bestMult,
-      }
+      const totalWon = u.bets.reduce((s, b) => s + Number(b.payout), 0)
+      const bestMult = u.bets.reduce((m, b) => { const v = b.cashoutMult ? parseFloat(b.cashoutMult.toString()) : 0; return v > m ? v : m }, 0)
+      return { username: u.username, isMe: u.id === user.id, rounds: u.bets.length, wins, wagered: totalWagered, profit: totalWon - totalWagered, bestMult }
     })
-
-    const sorted = rows.sort((a, b) => {
-      if (sort === 'wins')    return b.wins    - a.wins
-      if (sort === 'wagered') return b.wagered - a.wagered
-      return b.profit - a.profit  // default: profit
-    })
-
-    return ok(sorted)
+    rows.sort((a, b) => sort === 'wins' ? b.wins - a.wins : sort === 'wagered' ? b.wagered - a.wagered : b.profit - a.profit)
+    res.status(200).json(rows)
+    return
   }
 
-  return err('Unknown type. Use ?type=history or ?type=leaderboard')
+  res.status(400).json({ error: 'Unknown type.' })
 }

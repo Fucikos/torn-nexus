@@ -1,84 +1,48 @@
-// api/admin/withdrawals.js
-// GET  /api/admin/withdrawals         — list all pending withdrawals
-// POST /api/admin/withdrawals/fulfill — mark a withdrawal as completed
-//
-// Protected by ADMIN_PASSWORD env var (not a user JWT).
+import { prisma }        from '../../lib/prisma.js'
+import { getHouseBalance } from '../../lib/tornApi.js'
+import { handleCors }    from '../../lib/response.js'
+import { compare }       from 'bcryptjs'
 
-import { prisma }              from '../../lib/prisma.js'
-import { getHouseBalance }     from '../../lib/tornApi.js'
-import { ok, err, handleCors } from '../../lib/response.js'
-import { compare }             from 'bcryptjs'
-
-/** Validate the admin Authorization header: Bearer <admin_password> */
-async function requireAdmin(req) {
-  const header = req.headers.get('authorization') ?? ''
+async function requireAdmin(req, res) {
+  const header = req.headers['authorization'] ?? ''
   const pass   = header.replace('Bearer ', '').trim()
-  if (!pass) return false
-
-  // Compare against bcrypt hash stored in env
-  const hash = process.env.ADMIN_PASSWORD_HASH ?? ''
-  return compare(pass, hash)
+  if (!pass) { res.status(403).json({ error: 'Forbidden' }); return false }
+  const valid = await compare(pass, process.env.ADMIN_PASSWORD_HASH ?? '')
+  if (!valid) { res.status(403).json({ error: 'Forbidden' }); return false }
+  return true
 }
 
-export default async function handler(req) {
-  const cors = handleCors(req)
-  if (cors) return cors
+export default async function handler(req, res) {
+  if (handleCors(req, res)) return
 
-  const isAdmin = await requireAdmin(req)
-  if (!isAdmin) return err('Forbidden', 403)
+  const isAdmin = await requireAdmin(req, res)
+  if (!isAdmin) return
 
-  // ── GET: list pending withdrawals ─────────────────────────────────────
   if (req.method === 'GET') {
     const pending = await prisma.transaction.findMany({
-      where:   { type: 'WITHDRAWAL', status: 'PENDING' },
-      orderBy: { createdAt: 'asc' },
+      where: { type: 'WITHDRAWAL', status: 'PENDING' }, orderBy: { createdAt: 'asc' },
       include: { user: { select: { username: true, tornId: true } } },
     })
-
     let houseBalance = null
-    try {
-      houseBalance = await getHouseBalance()
-    } catch { /* non-fatal */ }
-
-    return ok({
-      houseBalance,
-      pendingCount:       pending.length,
+    try { houseBalance = await getHouseBalance() } catch {}
+    res.status(200).json({
+      houseBalance, pendingCount: pending.length,
       pendingTotalAmount: pending.reduce((s, t) => s + Number(t.amount), 0),
-      withdrawals: pending.map(tx => ({
-        id:          tx.id,
-        amount:      tx.amount.toString(),
-        username:    tx.user.username,
-        tornId:      tx.user.tornId,
-        description: tx.description,
-        createdAt:   tx.createdAt.toISOString(),
-      })),
+      withdrawals: pending.map(tx => ({ id: tx.id, amount: tx.amount.toString(), username: tx.user.username, tornId: tx.user.tornId, description: tx.description, createdAt: tx.createdAt.toISOString() })),
     })
+    return
   }
 
-  // ── POST: fulfill a withdrawal ────────────────────────────────────────
   if (req.method === 'POST') {
-    let body
-    try { body = await req.json() } catch { return err('Invalid JSON') }
-
-    const { transactionId } = body
-    if (!transactionId) return err('transactionId is required.')
-
+    const { transactionId } = req.body ?? {}
+    if (!transactionId) { res.status(400).json({ error: 'transactionId is required.' }); return }
     const tx = await prisma.transaction.findUnique({ where: { id: transactionId } })
-
-    if (!tx)                   return err('Transaction not found.', 404)
-    if (tx.type !== 'WITHDRAWAL') return err('Not a withdrawal transaction.', 400)
-    if (tx.status === 'COMPLETED') return err('Already marked as completed.', 409)
-
-    await prisma.transaction.update({
-      where: { id: transactionId },
-      data:  {
-        status:      'COMPLETED',
-        description: tx.description + ' — fulfilled',
-      },
-    })
-
-    return ok({ message: `Withdrawal #${transactionId} marked as fulfilled.` })
+    if (!tx) { res.status(404).json({ error: 'Transaction not found.' }); return }
+    if (tx.status === 'COMPLETED') { res.status(409).json({ error: 'Already completed.' }); return }
+    await prisma.transaction.update({ where: { id: transactionId }, data: { status: 'COMPLETED' } })
+    res.status(200).json({ message: `Withdrawal #${transactionId} marked as fulfilled.` })
+    return
   }
 
-  return err('Method not allowed', 405)
+  res.status(405).json({ error: 'Method not allowed' })
 }
