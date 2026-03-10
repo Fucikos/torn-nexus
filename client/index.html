@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TORN NEXUS — Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #07070f; --panel: #0d0d1a; --border: #1a1a2e;
+      --accent: #00ff9d; --danger: #ff3355; --warn: #ffaa00;
+      --text: #dde0f0; --muted: #6a6a9a;
+      --font-mono: 'Share Tech Mono', monospace;
+      --font-body: 'Rajdhani', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-body); background: var(--bg); color: var(--text); min-height: 100vh; padding: 32px 24px; }
+    h1 { font-family: var(--font-mono); color: var(--accent); letter-spacing: 4px; font-size: 22px; margin-bottom: 6px; }
+    .sub { font-family: var(--font-mono); font-size: 11px; color: var(--muted); margin-bottom: 28px; }
+
+    /* Login */
+    #login-section { max-width: 380px; }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; }
+    .field input { width: 100%; background: #0a0a14; border: 1px solid var(--border); border-radius: 6px; padding: 11px 14px; color: var(--text); font-family: var(--font-mono); font-size: 14px; outline: none; }
+    .field input:focus { border-color: var(--accent); }
+    .btn { background: var(--accent); color: #000; border: none; border-radius: 6px; padding: 12px 24px; font-family: var(--font-mono); font-size: 13px; letter-spacing: 2px; cursor: pointer; transition: opacity 0.2s; }
+    .btn:hover { opacity: 0.85; }
+    .btn.danger { background: var(--danger); color: #fff; }
+    .error { color: var(--danger); font-family: var(--font-mono); font-size: 11px; margin-top: 10px; }
+
+    /* Dashboard */
+    #dashboard { display: none; }
+    .stats-row { display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+    .stat-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 24px; min-width: 180px; }
+    .stat-box .label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+    .stat-box .value { font-family: var(--font-mono); font-size: 24px; color: var(--accent); }
+
+    /* Table */
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+    .panel-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+    table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; }
+    th { padding: 11px 16px; font-size: 10px; letter-spacing: 2px; color: var(--muted); text-align: left; border-bottom: 1px solid var(--border); font-weight: 400; text-transform: uppercase; }
+    td { padding: 12px 16px; border-bottom: 1px solid #10101e; color: var(--text); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 4px; font-size: 10px; letter-spacing: 1px; }
+    .badge.pending { background: rgba(255,170,0,0.12); border: 1px solid rgba(255,170,0,0.3); color: var(--warn); }
+    .fulfill-btn { background: rgba(0,255,157,0.1); border: 1px solid rgba(0,255,157,0.3); color: var(--accent); border-radius: 5px; padding: 6px 14px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; transition: all 0.2s; }
+    .fulfill-btn:hover { background: var(--accent); color: #000; }
+    .empty { text-align: center; padding: 40px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: 2px; }
+    .refresh-btn { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 5px; padding: 6px 14px; font-family: var(--font-mono); font-size: 10px; cursor: pointer; letter-spacing: 1px; transition: all 0.2s; }
+    .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .toast { position: fixed; top: 20px; right: 20px; background: var(--panel); border-left: 3px solid var(--accent); padding: 12px 18px; font-family: var(--font-mono); font-size: 12px; color: var(--accent); border-radius: 6px; animation: fade-in 0.2s ease; }
+    @keyframes fade-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; } }
+  </style>
+</head>
+<body>
+
+<h1>TORN NEXUS · ADMIN</h1>
+<div class="sub">OPERATOR PANEL — WITHDRAWAL MANAGEMENT</div>
+
+<!-- LOGIN -->
+<section id="login-section">
+  <div class="field">
+    <label>Admin Password</label>
+    <input type="password" id="admin-pass" placeholder="••••••••••••" />
+  </div>
+  <button class="btn" onclick="adminLogin()">AUTHENTICATE</button>
+  <div class="error" id="login-error"></div>
+</section>
+
+<!-- DASHBOARD -->
+<section id="dashboard">
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="label">Pending Withdrawals</div>
+      <div class="value" id="stat-count">—</div>
+    </div>
+    <div class="stat-box">
+      <div class="label">Total Owed</div>
+      <div class="value" id="stat-total">—</div>
+    </div>
+    <div class="stat-box">
+      <div class="label">House Balance</div>
+      <div class="value" id="stat-house">—</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Pending Withdrawals</span>
+      <button class="refresh-btn" onclick="loadWithdrawals()">↻ REFRESH</button>
+    </div>
+    <div id="table-wrap">
+      <div class="empty">Loading…</div>
+    </div>
+  </div>
+</section>
+
+<script>
+  let adminToken = ''
+
+  function fmt(n) {
+    const abs = Math.abs(Number(n))
+    if (abs >= 1e9) return '$' + (Number(n)/1e9).toFixed(2) + 'B'
+    if (abs >= 1e6) return '$' + (Number(n)/1e6).toFixed(2) + 'M'
+    if (abs >= 1e3) return '$' + (Number(n)/1e3).toFixed(1) + 'K'
+    return '$' + Number(n).toLocaleString()
+  }
+
+  async function adminLogin() {
+    const pass = document.getElementById('admin-pass').value.trim()
+    if (!pass) return
+    // Store token and try to load data — the API will 403 if wrong
+    adminToken = pass
+    const res = await fetch('/api/admin/withdrawals', {
+      headers: { 'Authorization': `Bearer ${pass}` }
+    })
+    if (res.status === 403) {
+      document.getElementById('login-error').textContent = 'Incorrect password.'
+      adminToken = ''
+      return
+    }
+    document.getElementById('login-section').style.display = 'none'
+    document.getElementById('dashboard').style.display = 'block'
+    const data = await res.json()
+    renderDashboard(data)
+  }
+
+  async function loadWithdrawals() {
+    const res  = await fetch('/api/admin/withdrawals', {
+      headers: { 'Authorization': `Bearer ${adminToken}` }
+    })
+    const data = await res.json()
+    renderDashboard(data)
+  }
+
+  function renderDashboard(data) {
+    document.getElementById('stat-count').textContent = data.pendingCount ?? 0
+    document.getElementById('stat-total').textContent = fmt(data.pendingTotalAmount ?? 0)
+    document.getElementById('stat-house').textContent = data.houseBalance != null ? fmt(data.houseBalance) : 'N/A'
+
+    const wrap = document.getElementById('table-wrap')
+    if (!data.withdrawals || data.withdrawals.length === 0) {
+      wrap.innerHTML = '<div class="empty">No pending withdrawals ✓</div>'
+      return
+    }
+
+    wrap.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Player</th><th>Torn ID</th><th>Amount</th><th>Requested</th><th>Status</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.withdrawals.map(w => `
+            <tr id="row-${w.id}">
+              <td>${w.id}</td>
+              <td>${w.username}</td>
+              <td>${w.tornId}</td>
+              <td style="color:var(--danger);font-weight:700">${fmt(w.amount)}</td>
+              <td style="color:var(--muted);font-size:11px">${new Date(w.createdAt).toLocaleString()}</td>
+              <td><span class="badge pending">PENDING</span></td>
+              <td>
+                <button class="fulfill-btn" onclick="fulfill(${w.id}, '${w.username}', '${w.amount}')">
+                  MARK SENT
+                </button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`
+  }
+
+  async function fulfill(id, username, amount) {
+    if (!confirm(`Mark withdrawal #${id} for ${username} (${fmt(amount)}) as fulfilled?\n\nMake sure you have already sent the money in Torn.`)) return
+
+    const res = await fetch('/api/admin/withdrawals', {
+      method:  'POST',
+      headers: { 'Authorization': `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ transactionId: id }),
+    })
+
+    const data = await res.json()
+    if (!res.ok) { alert('Error: ' + data.error); return }
+
+    // Remove row from table
+    document.getElementById(`row-${id}`)?.remove()
+    showToast(`Withdrawal #${id} marked as fulfilled.`)
+    loadWithdrawals()
+  }
+
+  function showToast(msg) {
+    const t = document.createElement('div')
+    t.className = 'toast'
+    t.textContent = msg
+    document.body.appendChild(t)
+    setTimeout(() => t.remove(), 3000)
+  }
+
+  // Auto-login on Enter
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') adminLogin()
+  })
+</script>
+</body>
+</html>
