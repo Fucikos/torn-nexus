@@ -310,17 +310,17 @@ async function _pollOnce() {
         G.runningStartedAtMs = now - elapsed * 1000;
       }
     }
-    // Do NOT update runningStartedAtMs on subsequent polls — let it stay anchored.
-    // Only do a drift correction if we're >8% off (clock skew / tab sleep recovery).
+    // Do NOT update runningStartedAtMs on most polls — let it stay anchored.
+    // We *only* ever correct if the client is clearly BEHIND the server
+    // (serverMult noticeably higher). We never jump the multiplier backwards.
     const clientMult = calcMultiplierAt(G.runningStartedAtMs);
     const serverMult = parseFloat(sv.multiplier);
-    if (serverMult > 1) {
-      const drift = Math.abs(clientMult - serverMult) / serverMult;
+    if (serverMult > 1 && clientMult < serverMult) {
+      const drift = (serverMult - clientMult) / serverMult;
       if (drift > 0.08) {
-        // Re-anchor — large drift means we've been out of sync (tab was hidden, etc.)
         const elapsed = elapsedFromMult(serverMult);
         G.runningStartedAtMs = now - elapsed * 1000;
-        console.warn(`[poll] Drift ${(drift * 100).toFixed(1)}% — re-anchored`);
+        console.warn(`[poll] Drift ${(drift * 100).toFixed(1)}% — re-anchored forward`);
       }
     }
   } else {
