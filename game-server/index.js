@@ -9,8 +9,10 @@ import { createHmac, randomBytes } from 'crypto'
 const prisma = new PrismaClient()
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const BETTING_MS  = 8_000    // 8s betting window
-const COOLDOWN_MS = 4_000    // 4s cooldown after crash
+// timings are intentionally short so the round cycle feels snappy
+// but they can be overridden in production if a longer interval is desired
+const BETTING_MS  = Number(process.env.BETTING_MS)  || 8_000    // 8s betting window
+const COOLDOWN_MS = Number(process.env.COOLDOWN_MS) || 4_000    // 4s cooldown after crash
 const TICK_MS     = 100      // server tick rate
 const HOUSE_EDGE  = 0.03     // 3%
 
@@ -44,6 +46,7 @@ function sleep(ms) {
 // ── Main loop ──────────────────────────────────────────────────────────────
 async function gameLoop() {
   console.log('[GameServer] Starting game loop…')
+  console.log(`[GameServer] timing: BETTING_MS=${BETTING_MS} COOLDOWN_MS=${COOLDOWN_MS}`)
 
   // Ensure the singleton game_state row exists
   await prisma.gameState.upsert({
@@ -59,10 +62,38 @@ async function gameLoop() {
     },
   })
 
+  // Main cycle – each phase is wrapped so a single failure doesn't
+  // kill the whole process.  If something goes wrong we log the
+  // error, pause briefly, and continue with the next iteration.  In
+  // the wild a dropped database connection or uncaught bug used to
+  // leave the server sitting in a crashed state for a minute or more
+  // until the process was restarted, which is what the player sees
+  // as “the next round never starts”.  The new structure keeps the
+  // loop moving and will typically recover within a second.
   while (true) {
-    await phaseBetting()
-    await phaseRunning()
-    await phaseCooldown()
+    try {
+      await phaseBetting()
+    } catch (err) {
+      console.error('[GameServer] phaseBetting failed, retrying…', err)
+      await sleep(1000)
+      continue
+    }
+
+    try {
+      await phaseRunning()
+    } catch (err) {
+      console.error('[GameServer] phaseRunning failed, skipping to cooldown', err)
+      // even if running hiccups we still want to hit cooldown so that
+      // clients see a transition; give the DB a moment first though
+      await sleep(1000)
+    }
+
+    try {
+      await phaseCooldown()
+    } catch (err) {
+      console.error('[GameServer] phaseCooldown failed, looping again', err)
+      await sleep(1000)
+    }
   }
 }
 
