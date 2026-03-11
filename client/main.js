@@ -38,6 +38,10 @@ const STATE = {
     // Interpolation anchor — set once when RUNNING starts, never jittered
     runningStartedAtMs: null,     // number (ms timestamp), null when not running
 
+    // drift smoothing helpers (see _rafTick/_pollOnce)
+    _anchorTargetMs:  null,
+    _pendingDrift:    0,
+
     // Derived / UI state
     cashedOut:     false,
     activePlayers: [],
@@ -76,7 +80,18 @@ function _rafTick() {
   const G = STATE.game;
 
   if (G.phase === 'RUNNING' && G.runningStartedAtMs !== null) {
-    const mult = calcMultiplierAt(G.runningStartedAtMs);
+    let mult = calcMultiplierAt(G.runningStartedAtMs);
+
+    // if we have a pending drift adjustment, ease it in over a few frames
+    if (G._pendingDrift && Math.abs(G._pendingDrift) > 0.0001) {
+      // move 20% of the remaining offset per tick (≈ 60fps) so corrections
+      // are noticeable but not jarring
+      const adjustment = G._pendingDrift * 0.2;
+      mult += adjustment;
+      G._pendingDrift -= adjustment;
+      if (Math.abs(G._pendingDrift) < 0.0001) G._pendingDrift = 0;
+    }
+
     _renderMult(mult, false);
     _updateCheckpoints(mult);
     _setProgress(mult);
@@ -310,23 +325,39 @@ async function _pollOnce() {
         G.runningStartedAtMs = now - elapsed * 1000;
       }
     }
+
     // Do NOT update runningStartedAtMs on most polls — let it stay anchored.
     // We *only* ever correct if the client is clearly BEHIND the server
     // (serverMult noticeably higher). We never jump the multiplier backwards.
+    // drift corrections used to be instantaneous which made the animation
+    // feel jumpy on slow connections. instead we store a pending adjustment
+    // and ease it into the render loop.
     const clientMult = calcMultiplierAt(G.runningStartedAtMs);
     const serverMult = parseFloat(sv.multiplier);
     if (serverMult > 1 && clientMult < serverMult) {
       const drift = (serverMult - clientMult) / serverMult;
       if (drift > 0.08) {
+        // compute the new anchor but don't apply it immediately; keep the
+        // amount we need to accelerate by and let _rafTick merge it in
         const elapsed = elapsedFromMult(serverMult);
-        G.runningStartedAtMs = now - elapsed * 1000;
-        console.warn(`[poll] Drift ${(drift * 100).toFixed(1)}% — re-anchored forward`);
+        G._anchorTargetMs = now - elapsed * 1000;
+        G._pendingDrift = (G._anchorTargetMs - G.runningStartedAtMs) || 0;
+        console.warn(`[poll] Drift ${(drift * 100).toFixed(1)}% — will ease forward`);
       }
     }
   } else {
-    // Not running — clear anchor and show server value directly
+    // Not running — clear anchor and always show 1× while bets are open.
+    // previously we showed the last crash value during COOLDOWN which led to
+    // a big backwards jump when the next round began; just hard‑reset to 1.00
+    // so the curve always starts from a known baseline.
     G.runningStartedAtMs = null;
-    const mult = parseFloat(sv.multiplier) || 1.00;
+    STATE.game._anchorTargetMs = null;
+    STATE.game._pendingDrift = 0;
+
+    const mult = sv.phase === 'CRASHED'
+      ? parseFloat(sv.multiplier) // show crash value for a moment
+      : 1.00;                    // otherwise just show 1×
+
     _renderMult(mult, sv.phase === 'CRASHED');
     _updateCheckpoints(mult);
     _setProgress(mult);
@@ -399,14 +430,14 @@ function _onPhaseChange(phase, roundId, sv = {}) {
 
     const crashedMult = parseFloat(sv.multiplier) || G.serverMultiplier || 1.00;
     _renderMult(crashedMult, true);
-    document.getElementById('phase-timer').textContent = `Crashed at ${crashedMult.toFixed(2)}×`;
+    document.getElementById('phase-timer').textContent = `Crashed at ${crashedMult.toFixed(4)}×`;
 
     if (G.myBet && !G.cashedOut && !G.myBet.cashoutMult) {
       const lost     = Number(G.myBet.amount ?? 0);
       const statusEl = document.getElementById('bet-status');
       if (statusEl && lost > 0) {
         statusEl.className   = 'bet-status busted';
-        statusEl.textContent = `💀 Busted at ${crashedMult.toFixed(2)}× — lost $${fmt(lost)}`;
+        statusEl.textContent = `💀 Busted at ${crashedMult.toFixed(4)}× — lost $${fmt(lost)}`;
         showResultFlash('loss', `-$${fmt(lost)}`);
       }
     }
@@ -528,7 +559,7 @@ async function cashOut() {
     const statusEl = document.getElementById('bet-status');
     if (statusEl) {
       statusEl.className   = 'bet-status cashed-out';
-      statusEl.textContent = `✓ Cashed out at ${mult.toFixed(2)}× — won $${fmt(profit)}!`;
+      statusEl.textContent = `✓ Cashed out at ${mult.toFixed(4)}× — won $${fmt(profit)}!`;
     }
 
     showResultFlash('win', `+$${fmt(profit)}`);
@@ -642,7 +673,7 @@ function renderRoundHistory() {
     return `
       <div class="rh-item">
         <span class="rh-round">#${r.roundId}</span>
-        <span class="rh-mult ${cls}">${r.crash.toFixed(2)}×</span>
+        <span class="rh-mult ${cls}">${r.crash.toFixed(4)}×</span>
         ${pnlHtml}
       </div>`;
   }).join('');
@@ -678,7 +709,7 @@ function renderActivePlayers(crashed = false) {
     const effectiveStatus = (crashed && p.status === 'active') ? 'lost' : p.status;
     let statusHtml;
     if (effectiveStatus === 'active')  statusHtml = `<span class="ap-status active">IN</span>`;
-    else if (effectiveStatus === 'cashed') statusHtml = `<span class="ap-status cashed">✓ ${p.multAt?.toFixed(2) ?? '?'}×</span>`;
+    else if (effectiveStatus === 'cashed') statusHtml = `<span class="ap-status cashed">✓ ${p.multAt?.toFixed(4) ?? '?'}×</span>`;
     else statusHtml = `<span class="ap-status lost">✕ BUST</span>`;
 
     return `
@@ -721,7 +752,8 @@ function _renderMult(mult, crashed) {
   const sub = document.getElementById('mult-sub');
   if (!el || !sub) return;
 
-  el.textContent = `${mult.toFixed(2)}×`;
+  // display four decimal places so the curve looks smooth at high speeds
+  el.textContent = `${mult.toFixed(4)}×`;
 
   if (crashed) {
     el.className    = 'mult-value crashed';
@@ -777,8 +809,8 @@ function renderHomeFeed() {
     feedEl.innerHTML = feed.slice(0, 12).map(entry => {
       const isWin     = entry.pnl > 0;
       const resultTxt = isWin
-        ? `+$${fmt(entry.pnl)} @ ${entry.crash.toFixed(2)}×`
-        : `BUST @ ${entry.crash.toFixed(2)}×`;
+        ? `+$${fmt(entry.pnl)} @ ${entry.crash.toFixed(4)}×`
+        : `BUST @ ${entry.crash.toFixed(4)}×`;
       return `
         <div class="bet-item">
           <div class="bi-avatar">${(entry.username || '?')[0].toUpperCase()}</div>
@@ -804,7 +836,7 @@ function renderHomeFeed() {
       return `
         <div class="game-row">
           <span class="gr-round">Round #${e.roundId}</span>
-          <span class="gr-mult ${cls}">${e.crash.toFixed(2)}×</span>
+          <span class="gr-mult ${cls}">${e.crash.toFixed(4)}×</span>
           <span class="gr-time">${timeAgo(e.time)}</span>
         </div>`;
     }).join('');
@@ -830,7 +862,7 @@ function updateAllUI() {
   const wr = st.rounds > 0 ? Math.round((st.wins / st.rounds) * 100) : 0;
   _setEl('gs-winrate',     `${wr}%`);
   _setEl('gs-rounds',      st.rounds);
-  _setEl('gs-best-mult',   st.bestMult > 0 ? `${st.bestMult.toFixed(2)}×` : '—');
+  _setEl('gs-best-mult',   st.bestMult > 0 ? `${st.bestMult.toFixed(4)}×` : '—');
   _setEl('gs-biggest-win', st.biggestWin > 0 ? `$${fmt(st.biggestWin)}` : '—');
 
   refreshWalletUI();

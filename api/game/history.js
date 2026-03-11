@@ -17,9 +17,21 @@ export default async function handler(req, res) {
       where: { phase: 'CRASHED' }, orderBy: { endedAt: 'desc' }, take: 20,
       include: { bets: { where: { userId: user.id }, select: { amount: true, cashoutMult: true, payout: true } } },
     })
+    // convert to string with at least four decimal places so the client
+    // always sees the precision that was stored in the database
     res.status(200).json(rounds.map(r => ({
-      id: r.id, crashPoint: r.crashPoint.toString(), endedAt: r.endedAt?.toISOString(),
-      myBet: r.bets[0] ? { amount: r.bets[0].amount.toString(), cashoutMult: r.bets[0].cashoutMult?.toString() ?? null, payout: r.bets[0].payout.toString() } : null,
+      id: r.id,
+      crashPoint: parseFloat(r.crashPoint.toString()).toFixed(4),
+      endedAt: r.endedAt?.toISOString(),
+      myBet: r.bets[0]
+        ? {
+            amount: r.bets[0].amount.toString(),
+            cashoutMult: r.bets[0].cashoutMult !== null
+              ? parseFloat(r.bets[0].cashoutMult.toString()).toFixed(4)
+              : null,
+            payout: r.bets[0].payout.toString()
+          }
+        : null,
     })))
     return
   }

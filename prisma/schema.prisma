@@ -72,7 +72,7 @@ enum TransactionStatus {
 
 model Round {
   id         Int        @id @default(autoincrement())
-  crashPoint Decimal    @map("crash_point") @db.Decimal(10, 2)
+  crashPoint Decimal    @map("crash_point") @db.Decimal(10, 4)
   seed       String     @db.Text
   phase      RoundPhase @default(BETTING)
   startedAt  DateTime   @default(now()) @map("started_at")
@@ -100,7 +100,7 @@ model Bet {
   userId      Int      @map("user_id")
   roundId     Int      @map("round_id")
   amount      BigInt
-  cashoutMult Decimal? @map("cashout_mult") @db.Decimal(10, 2)
+  cashoutMult Decimal? @map("cashout_mult") @db.Decimal(10, 4)
   payout      BigInt   @default(0)
   fee         BigInt   @default(0)
   createdAt   DateTime @default(now()) @map("created_at")

@@ -48,7 +48,7 @@ export default async function handler(req, res) {
   const feeNote = fee > 0n
     ? ` (fee: $${fee.toString()})`
     : ''
-  const desc = `Cashed out at ${currentMult.toFixed(2)}× — Round #${state.roundId}${feeNote}`
+  const desc = `Cashed out at ${currentMult.toFixed(4)}× — Round #${state.roundId}${feeNote}`
 
   // ── Atomic cashout guard ───────────────────────────────────────────────────
   // updateMany with cashoutMult: null ensures only one concurrent request wins.
@@ -85,8 +85,8 @@ export default async function handler(req, res) {
   const updatedWallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
 
   res.status(200).json({
-    message:     `Cashed out at ${currentMult.toFixed(2)}×!`,
-    cashoutMult: currentMult.toFixed(2),
+    message:     `Cashed out at ${currentMult.toFixed(4)}×!`,
+    cashoutMult: currentMult.toFixed(4),
     payout:      payout.toString(),
     profit:      profit.toString(),
     fee:         fee.toString(),

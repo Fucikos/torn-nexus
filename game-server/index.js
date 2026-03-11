@@ -23,11 +23,12 @@ function generateCrashPoint(seed) {
   const hash = createHmac('sha256', seed).digest('hex')
   const r    = parseInt(hash.slice(0, 8), 16) / 0xFFFFFFFF
 
-  if (r < HOUSE_EDGE) return 1.00
+  if (r < HOUSE_EDGE) return 1.0000
 
   // Inverse of survival function: ensures E[payout] = 1 - houseEdge
   const crash = 1 / (1 - r * (1 - HOUSE_EDGE))
-  return Math.min(parseFloat(crash.toFixed(2)), 1000.00)
+  // use the same precision as the multiplier curve (4 decimal places)
+  return Math.min(parseFloat(crash.toFixed(4)), 1000.0000)
 }
 
 // ── Multiplier curve ───────────────────────────────────────────────────────
