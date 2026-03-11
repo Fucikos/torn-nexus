@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deposit — Torn Nexus</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #080808;
+      color: #ccc;
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .container { width: 100%; max-width: 480px; }
+    .header { margin-bottom: 40px; }
+    .header .label { font-size: 11px; letter-spacing: 4px; color: #444; text-transform: uppercase; margin-bottom: 8px; }
+    .header h1 { font-size: 36px; font-weight: 800; color: #fff; line-height: 1.1; }
+    .header h1 span { color: #f59e0b; }
+    .header p { color: #444; font-size: 13px; margin-top: 10px; font-family: 'JetBrains Mono', monospace; }
+    .card {
+      background: #111;
+      border: 1px solid #1f1f1f;
+      border-radius: 16px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    label.field-label { font-size: 11px; letter-spacing: 2px; color: #555; text-transform: uppercase; display: block; margin-bottom: 8px; }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      background: #0d0d0d;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: #fff;
+      font-size: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      outline: none;
+    }
+    input:focus { border-color: #f59e0b; }
+    .presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+    .preset-btn {
+      background: #0d0d0d;
+      border: 1px solid #222;
+      color: #666;
+      border-radius: 8px;
+      padding: 10px 4px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .preset-btn.active, .preset-btn:hover { background: #f59e0b; border-color: #f59e0b; color: #000; font-weight: 700; }
+    .custom-btn {
+      width: 100%;
+      background: transparent;
+      border: 1px solid #1a1a1a;
+      color: #555;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 11px;
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 1px;
+    }
+    .custom-btn:hover { border-color: #333; }
+    .instructions {
+      background: #0d0d0d;
+      border: 1px solid #1a1a1a;
+      border-radius: 8px;
+      padding: 14px;
+      display: none;
+    }
+    .instructions .inst-label { font-size: 11px; color: #555; letter-spacing: 2px; margin-bottom: 8px; text-transform: uppercase; }
+    .instructions p { font-size: 12px; color: #666; font-family: 'JetBrains Mono', monospace; line-height: 1.8; }
+    .instructions span.highlight { color: #f59e0b; }
+    .instructions span.white { color: #fff; }
+    .submit-btn {
+      background: #1a1a1a;
+      color: #333;
+      border: none;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: not-allowed;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      transition: all 0.15s;
+      font-family: 'Syne', sans-serif;
+      width: 100%;
+    }
+    .submit-btn.ready { background: #f59e0b; color: #000; cursor: pointer; }
+    .submit-btn.ready:hover { background: #fbbf24; }
+    .result {
+      border-radius: 10px;
+      padding: 16px;
+      display: none;
+    }
+    .result.success { background: #0a1a0a; border: 1px solid #166534; }
+    .result.error { background: #1a0a0a; border: 1px solid #7f1d1d; }
+    .result .msg { font-size: 13px; font-weight: 600; }
+    .result.success .msg { color: #4ade80; }
+    .result.error .msg { color: #f87171; }
+    .result .balance { font-size: 12px; color: #555; margin-top: 6px; font-family: 'JetBrains Mono', monospace; }
+    .result .balance span { color: #f59e0b; }
+    .pending-btn {
+      margin-top: 10px;
+      background: transparent;
+      border: 1px solid #333;
+      color: #555;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 11px;
+      cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .pending-table { margin-top: 24px; background: #111; border: 1px solid #1f1f1f; border-radius: 16px; padding: 24px; display: none; }
+    .pending-table .pt-label { font-size: 11px; letter-spacing: 2px; color: #555; text-transform: uppercase; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+    th { text-align: left; padding: 6px 10px; color: #333; font-size: 10px; letter-spacing: 2px; border-bottom: 1px solid #1a1a1a; }
+    td { padding: 8px 10px; }
+    .td-amount { color: #f59e0b; }
+    .td-status { color: #f87171; }
+    .td-date { color: #444; }
+    .note { font-size: 11px; color: #333; margin-top: 12px; font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="label">Torn Nexus</div>
+      <h1>Deposit<br><span>Funds</span></h1>
+      <p>Send money to Fucikos in-game → verify here → wallet credited instantly</p>
+    </div>
+
+    <div class="card">
+      <div>
+        <label class="field-label">Your Torn Username</label>
+        <input type="text" id="tornName" placeholder="e.g. Fluke88" oninput="checkReady()" />
+      </div>
+
+      <div>
+        <label class="field-label">Deposit Amount</label>
+        <div class="presets">
+          <button class="preset-btn" onclick="selectPreset(10000, this)">$10,000</button>
+          <button class="preset-btn" onclick="selectPreset(50000, this)">$50,000</button>
+          <button class="preset-btn" onclick="selectPreset(100000, this)">$100,000</button>
+          <button class="preset-btn" onclick="selectPreset(500000, this)">$500,000</button>
+          <button class="preset-btn" onclick="selectPreset(1000000, this)">$1,000,000</button>
+          <button class="preset-btn" onclick="selectPreset(5000000, this)">$5,000,000</button>
+        </div>
+        <button class="custom-btn" onclick="showCustom()">+ Custom amount</button>
+        <input type="number" id="customAmount" placeholder="Enter exact amount..." style="margin-top:8px;border-color:#f59e0b;color:#f59e0b;display:none" oninput="onCustomInput()" />
+      </div>
+
+      <div class="instructions" id="instructions">
+        <div class="inst-label">Instructions</div>
+        <p>
+          1. Go to Torn → Send Money<br>
+          2. Send <span class="highlight" id="instrAmount"></span> to <span class="white">Fucikos</span><br>
+          3. Come back here and hit Verify
+        </p>
+      </div>
+
+      <button class="submit-btn" id="submitBtn" onclick="handleDeposit()">▶ Verify Deposit</button>
+
+      <div class="result" id="result">
+        <div class="msg" id="resultMsg"></div>
+        <div class="balance" id="resultBalance"></div>
+        <button class="pending-btn" id="pendingBtn" onclick="loadPending()" style="display:none">View my pending deposits</button>
+      </div>
+    </div>
+
+    <div class="pending-table" id="pendingTable">
+      <div class="pt-label">Unverified Deposits</div>
+      <table>
+        <thead><tr><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody id="pendingBody"></tbody>
+      </table>
+      <div class="note">These will be verified once the transfer appears in Torn logs.</div>
+    </div>
+  </div>
+
+  <script>
+    // ← Replace these with your actual values from .env
+    const SUPABASE_URL = "https://zdcbnelbpqmyftgvjpha.supabase.co";
+    const SUPABASE_ANON_KEY = "YOUR_ANON_KEY_HERE";
+
+    let selectedAmount = null;
+
+    function fmt(n) {
+      return "$" + Number(n).toLocaleString();
+    }
+
+    function selectPreset(amount, btn) {
+      selectedAmount = amount;
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("customAmount").style.display = "none";
+      document.getElementById("customAmount").value = "";
+      updateInstructions();
+      checkReady();
+    }
+
+    function showCustom() {
+      document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+      selectedAmount = null;
+      document.getElementById("customAmount").style.display = "block";
+      document.getElementById("customAmount").focus();
+      checkReady();
+    }
+
+    function onCustomInput() {
+      selectedAmount = Number(document.getElementById("customAmount").value) || null;
+      updateInstructions();
+      checkReady();
+    }
+
+    function updateInstructions() {
+      const instr = document.getElementById("instructions");
+      if (selectedAmount) {
+        instr.style.display = "block";
+        document.getElementById("instrAmount").textContent = fmt(selectedAmount);
+      } else {
+        instr.style.display = "none";
+      }
+    }
+
+    function checkReady() {
+      const name = document.getElementById("tornName").value.trim();
+      const btn = document.getElementById("submitBtn");
+      if (name && selectedAmount) {
+        btn.classList.add("ready");
+      } else {
+        btn.classList.remove("ready");
+      }
+    }
+
+    async function handleDeposit() {
+      const tornName = document.getElementById("tornName").value.trim();
+      if (!tornName || !selectedAmount) return;
+
+      const btn = document.getElementById("submitBtn");
+      btn.textContent = "Checking Torn logs...";
+      btn.classList.remove("ready");
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/verify-deposit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ torn_username: tornName, amount: selectedAmount }),
+      });
+
+      const data = await res.json();
+
+      const resultEl = document.getElementById("result");
+      const msgEl = document.getElementById("resultMsg");
+      const balanceEl = document.getElementById("resultBalance");
+      const pendingBtn = document.getElementById("pendingBtn");
+
+      resultEl.style.display = "block";
+
+      if (data.success) {
+        resultEl.className = "result success";
+        msgEl.textContent = "✓ " + data.message;
+        balanceEl.innerHTML = `New balance: <span>${fmt(data.new_balance)}</span>`;
+        pendingBtn.style.display = "none";
+      } else {
+        resultEl.className = "result error";
+        msgEl.textContent = "✗ " + (data.error || data.message);
+        balanceEl.textContent = "";
+        pendingBtn.style.display = "block";
+      }
+
+      btn.textContent = "▶ Verify Deposit";
+      checkReady();
+    }
+
+    async function loadPending() {
+      const tornName = document.getElementById("tornName").value.trim();
+      if (!tornName) return;
+
+      // Fetch user id
+      const userRes = await fetch(`${SUPABASE_URL}/rest/v1/users?username=ilike.${encodeURIComponent(tornName)}&select=id`, {
+        headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
+      });
+      const users = await userRes.json();
+      if (!users.length) return;
+
+      const userId = users[0].id;
+      const txRes = await fetch(`${SUPABASE_URL}/rest/v1/transactions?user_id=eq.${userId}&status=eq.invalid&order=created_at.desc&select=*`, {
+        headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
+      });
+      const txs = await txRes.json();
+
+      const tbody = document.getElementById("pendingBody");
+      tbody.innerHTML = "";
+      txs.forEach(tx => {
+        tbody.innerHTML += `
+          <tr>
+            <td class="td-amount">${fmt(tx.amount)}</td>
+            <td class="td-status">⚠ unverified</td>
+            <td class="td-date">${new Date(tx.created_at).toLocaleDateString()}</td>
+          </tr>`;
+      });
+
+      document.getElementById("pendingTable").style.display = "block";
+    }
+  </script>
+</body>
+</html>

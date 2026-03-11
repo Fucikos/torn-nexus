@@ -14,11 +14,17 @@
     "@prisma/client": "^5.10.0",
     "bcryptjs": "^2.4.3",
     "jose": "^5.2.3",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@supabase/supabase-js": "^2.33.0"
   },
   "devDependencies": {
     "prisma": "^5.10.0",
-    "vercel": "^33.5.0"
+    "vercel": "^33.5.0",
+    "typescript": "^5.1.6",
+    "@types/react": "^18.2.21",
+    "@types/react-dom": "^18.2.7"
   },
   "engines": {
     "node": ">=18.0.0"

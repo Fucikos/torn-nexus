@@ -96,15 +96,6 @@
 
           <div id="login-error" class="error-msg"></div>
 
-          <p class="login-note">
-            Your API key is verified server-side and stored AES-256 encrypted —
-            never exposed to the browser after login.<br><br>
-            Get a <strong>Limited Access</strong> key at
-            <a href="https://www.torn.com/preferences.php#tab=api" target="_blank" rel="noopener">
-              torn.com → Settings → API
-            </a>
-          </p>
-
         </div>
       </div>
     </div>
@@ -190,13 +181,6 @@
           <div class="section-sub">Deposit · Withdraw · Track</div>
         </div>
 
-        <div class="info-box">
-          <span class="ib-icon">ℹ️</span>
-          Deposits are verified against the house account's live Torn transaction log via the server.
-          Your API key is never exposed — all verification happens server-side.
-          Withdrawals are fulfilled manually by the operator, typically within 24 hours.
-        </div>
-
         <!-- Balance card -->
         <div class="wallet-balance-card">
           <div class="wbc-label">Available Site Balance</div>
@@ -229,13 +213,6 @@
           <!-- Deposit / Withdraw -->
           <div class="action-card">
             <div class="action-card-title">Deposit &amp; Withdraw</div>
-
-            <div class="info-box" style="margin-bottom:16px;font-size:10px;line-height:1.8;">
-              <span class="ib-icon">📋</span>
-              To deposit: send Torn $ to the house account in-game, then paste the
-              <strong style="color:var(--accent)">Torn Transaction ID</strong>
-              from your event log below alongside the amount.
-            </div>
 
             <div class="amount-field-wrap">
               <span class="amount-prefix">$</span>
@@ -288,15 +265,6 @@
               <span class="verif-val ok" id="v-anticheat">✓ Active</span>
             </div>
 
-            <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
-              <div class="action-card-title" style="margin-bottom:12px;">How to find your Transaction ID</div>
-              <ol style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);line-height:2;padding-left:16px;">
-                <li>Open Torn City in-game</li>
-                <li>Go to your <strong style="color:var(--text-dim)">Events log</strong></li>
-                <li>Find the money send confirmation entry</li>
-                <li>The numeric ID at the end is your Transaction ID</li>
-              </ol>
-            </div>
           </div>
 
         </div>
@@ -334,8 +302,6 @@
 
         <div class="game-title-bar">
           <div class="game-title">NEXUS <span>SURGE</span></div>
-          <span class="game-badge original">⚡ Original Game</span>
-          <span class="game-badge house-edge">House Edge: 3%</span>
         </div>
 
         <div class="game-layout">
@@ -347,12 +313,6 @@
               <div class="result-flash" id="result-flash">
                 <div class="result-flash-inner" id="result-flash-inner"></div>
               </div>
-
-              <p class="arena-desc">
-                A multiplier climbs from 1.00× and crashes at an unknown point each round.<br>
-                Place your bet during BETTING, then cash out before the crash to win.<br>
-                Miss the window and your bet is lost. Crash point determined server-side — provably fair.
-              </p>
 
               <div class="phase-row">
                 <div class="phase-tag betting" id="phase-tag">
@@ -407,7 +367,7 @@
                   </label>
                   <span class="aco-label">Auto cash-out at</span>
                   <input id="aco-value" class="aco-input" type="number"
-                    value="2.00" step="0.1" min="1.01" max="1000" />
+                    value="2.00" step="0.1" min="1.10" max="1000" />
                   <span class="aco-label">×</span>
                 </div>
 

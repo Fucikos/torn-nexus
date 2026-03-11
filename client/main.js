@@ -147,16 +147,13 @@ async function loginSuccess(user) {
   await refreshWalletFromServer();
   await refreshStatsFromServer();
 
-  // Hide login page explicitly, show topbar, navigate home
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-home').classList.add('active');
+  // Show topbar + navigate home
   document.getElementById('topbar').style.display = 'flex';
-  document.getElementById('nav-home')?.classList.add('active');
   updateVerificationUI(true);
   startGamePolling();
   seedLeaderboard();
+  navigate('home');
   updateAllUI();
-  renderHomeFeed();
   showToast(`Welcome back, ${STATE.user.username}!`, 'success');
 
   // Reset login button
@@ -787,21 +784,40 @@ async function cashOut() {
   if (!G.myBet)              { showToast('No active bet.', 'error'); return; }
   if (G.cashedOut)           { return; }
 
+  // Enforce minimum cashout multiplier
+  const MIN_CASHOUT = 1.10;
+  if (G.multiplier < MIN_CASHOUT) {
+    showToast(`Minimum cash-out is ${MIN_CASHOUT}×`, 'error');
+    return;
+  }
+
   // Optimistically mark as cashed out to prevent double-tap
   G.cashedOut = true;
   updateBetControls();
 
   try {
     const data = await apiPost('/api/game/cashout', {});
-    const mult = parseFloat(data.cashoutMult);
-    const profit = Number(data.profit);
+    const mult   = parseFloat(data.cashoutMult);
+    const payout = Number(data.payout);
+    const bet    = Number(G.myBet.amount);
 
-    STATE.wallet.balance = Number(data.balance);
-    G.myBet = { ...G.myBet, cashoutMult: mult, payout: Number(data.payout) };
+    // Apply 3% cashout fee on low multipliers (under 1.5×)
+    // This discourages grinding tiny multipliers repeatedly
+    const FEE_RATE     = mult < 1.5 ? 0.03 : 0;
+    const fee          = Math.floor(payout * FEE_RATE);
+    const netPayout    = payout - fee;
+    const profit       = netPayout - bet;
+
+    STATE.wallet.balance = Number(data.balance) - fee;
+    G.myBet = { ...G.myBet, cashoutMult: mult, payout: netPayout };
 
     const statusEl = document.getElementById('bet-status');
-    statusEl.className   = 'bet-status cashed-out';
-    statusEl.textContent = `✓ Cashed out at ${mult.toFixed(2)}× — won $${fmt(profit)}!`;
+    statusEl.className = 'bet-status cashed-out';
+    if (fee > 0) {
+      statusEl.textContent = `✓ Cashed out at ${mult.toFixed(2)}× — won $${fmt(profit)} (fee: $${fmt(fee)})`;
+    } else {
+      statusEl.textContent = `✓ Cashed out at ${mult.toFixed(2)}× — won $${fmt(profit)}!`;
+    }
 
     showResultFlash('win', `+$${fmt(profit)}`);
     syncTopbar();
@@ -810,9 +826,9 @@ async function cashOut() {
     // Update stats optimistically
     STATE.stats.wins++;
     STATE.stats.rounds++;
-    STATE.stats.totalWon     += Number(data.payout);
-    STATE.stats.totalWagered += G.myBet.amount;
-    if (mult > STATE.stats.bestMult)   STATE.stats.bestMult   = mult;
+    STATE.stats.totalWon     += netPayout;
+    STATE.stats.totalWagered += bet;
+    if (mult > STATE.stats.bestMult)     STATE.stats.bestMult   = mult;
     if (profit > STATE.stats.biggestWin) STATE.stats.biggestWin = profit;
 
     if (document.getElementById('page-stats')?.classList.contains('active')) renderStats();
