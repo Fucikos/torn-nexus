@@ -110,12 +110,13 @@ model Bet {
 }
 
 model GameState {
-  id          Int        @id @default(1)
-  roundId     Int        @map("round_id")
-  phase       RoundPhase @default(BETTING)
-  multiplier  Decimal    @default(1.00) @db.Decimal(10, 2)
-  phaseEndsAt DateTime   @map("phase_ends_at")
-  updatedAt   DateTime   @default(now()) @updatedAt @map("updated_at")
+  id               Int        @id @default(1)
+  roundId          Int        @map("round_id")
+  phase            RoundPhase @default(BETTING)
+  multiplier       Decimal    @default(1.00) @db.Decimal(10, 4)
+  phaseEndsAt      DateTime   @map("phase_ends_at")
+  runningStartedAt DateTime?  @map("running_started_at")
+  updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at")
 
   @@map("game_state")
 }

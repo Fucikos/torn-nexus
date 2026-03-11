@@ -36,7 +36,8 @@ const STATE = {
     streakHistory: [],
   },
 
-  // Live game state — synced from GET /api/game/state every 100ms
+  // Live game state — synced from GET /api/game/state every ~1s for phase,
+  // but multiplier is interpolated client-side at 60fps for smoothness
   game: {
     phase:       'WAITING',   // BETTING | RUNNING | CRASHED | WAITING
     roundId:     0,
@@ -44,9 +45,13 @@ const STATE = {
     phaseEndsAt: null,
     myBet:       null,        // { amount, cashoutMult, payout, busted } | null
 
+    // Client-side smooth interpolation
+    runningStartedAt: null,   // Date — when RUNNING phase began (from server)
+    serverMult:       1.00,   // last multiplier value from server (used for sync)
+
     // UI-only (not from server)
-    intervalId:    null,      // betting/cooldown countdown ticker
-    tickId:        null,      // 100ms polling interval
+    pollId:        null,      // setInterval for polling server state (~1s)
+    rafId:         null,      // requestAnimationFrame id for smooth rendering
     cashedOut:     false,
     activePlayers: [],
     roundHistory:  [],
@@ -62,17 +67,71 @@ const STATE = {
 
 
 /* ============================================================
+   MULTIPLIER INTERPOLATION
+   Server is polled every ~1s. Between polls, we interpolate
+   the multiplier client-side using the same formula as the
+   game server, keyed off runningStartedAt.
+   Formula: mult = 1 + Math.pow(elapsedSec, 1.5) * 0.25
+============================================================ */
+
+function calcMultiplierAt(startedAt) {
+  if (!startedAt) return 1.00;
+  const elapsedSec = (Date.now() - startedAt) / 1000;
+  if (elapsedSec <= 0) return 1.00;
+  return 1 + Math.pow(elapsedSec, 1.5) * 0.25;
+}
+
+let _rafRunning = false;
+
+function startRenderLoop() {
+  if (_rafRunning) return;
+  _rafRunning = true;
+  renderFrame();
+}
+
+function stopRenderLoop() {
+  _rafRunning = false;
+  if (STATE.game.rafId) {
+    cancelAnimationFrame(STATE.game.rafId);
+    STATE.game.rafId = null;
+  }
+}
+
+function renderFrame() {
+  if (!_rafRunning) return;
+
+  const G = STATE.game;
+
+  if (G.phase === 'RUNNING' && G.runningStartedAt) {
+    // Interpolate multiplier client-side — smooth 60fps
+    const interp = calcMultiplierAt(G.runningStartedAt);
+
+    // Don't go past server crash point if we know it crashed
+    const displayMult = interp;
+    G.multiplier = displayMult;
+
+    _setMultDisplay(displayMult, false);
+    _updateCheckpoints(displayMult);
+    _setProgress(displayMult);
+    syncTopbar();
+
+    // Auto cashout check at exact client-side multiplier
+    const acoEnabled = document.getElementById('aco-enabled')?.checked;
+    const acoVal     = parseFloat(document.getElementById('aco-value')?.value);
+    if (acoEnabled && !isNaN(acoVal) && G.myBet && !G.cashedOut && displayMult >= acoVal) {
+      cashOut();
+    }
+  }
+
+  G.rafId = requestAnimationFrame(renderFrame);
+}
+
+
+/* ============================================================
    API LAYER
    Single fetch wrapper — attaches JWT, handles errors uniformly.
 ============================================================ */
 
-/**
- * Call a backend API route.
- * @param {string} path       - e.g. '/api/auth/login'
- * @param {object} [options]  - fetch options override
- * @returns {Promise<object>} - parsed JSON response
- * @throws {Error}            - with server error message
- */
 async function api(path, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
@@ -122,9 +181,7 @@ async function doLogin() {
   try {
     const data = await apiPost('/api/auth/login', { username, apiKey });
 
-    // Store JWT in memory only
     STATE._token = data.token;
-
     await loginSuccess(data.user);
 
   } catch (err) {
@@ -140,23 +197,20 @@ async function loginSuccess(user) {
   STATE.user.username = user.username;
   STATE.user.tornId   = user.tornId;
 
-  // Set initial balance from login response
   STATE.wallet.balance = Number(user.balance);
 
-  // Load wallet + stats from server
   await refreshWalletFromServer();
   await refreshStatsFromServer();
 
-  // Show topbar + navigate home
   document.getElementById('topbar').style.display = 'flex';
   updateVerificationUI(true);
   startGamePolling();
+  startRenderLoop();
   seedLeaderboard();
   navigate('home');
   updateAllUI();
   showToast(`Welcome back, ${STATE.user.username}!`, 'success');
 
-  // Reset login button
   const btn = document.getElementById('login-btn');
   if (btn) { btn.disabled = false; btn.innerHTML = 'ACCESS NEXUS'; }
 }
@@ -169,17 +223,16 @@ function showLoginError(el, msg) {
 function logout() {
   if (!confirm('Log out of Torn Nexus?')) return;
 
-  // Stop all polling
-  if (STATE.game.tickId)     clearInterval(STATE.game.tickId);
-  if (STATE.game.intervalId) clearInterval(STATE.game.intervalId);
+  stopRenderLoop();
+  if (STATE.game.pollId) clearInterval(STATE.game.pollId);
 
-  // Wipe state
   STATE.loggedIn   = false;
   STATE._token     = null;
   STATE.user       = { id: 0, username: '', tornId: 0 };
   STATE.wallet     = { balance: 0, totalDeposited: 0, totalWithdrawn: 0, transactions: [] };
   STATE.game.phase = 'WAITING';
-  STATE.game.tickId = null;
+  STATE.game.pollId = null;
+  STATE.game.runningStartedAt = null;
 
   document.getElementById('topbar').style.display = 'none';
   hideDemoBanner();
@@ -192,7 +245,6 @@ function logout() {
    SERVER DATA SYNC
 ============================================================ */
 
-/** Pull latest wallet data from /api/wallet and update STATE */
 async function refreshWalletFromServer() {
   try {
     const data = await apiGet('/api/wallet');
@@ -202,7 +254,7 @@ async function refreshWalletFromServer() {
     STATE.wallet.totalWithdrawn = Number(data.totalWithdrawn);
     STATE.wallet.transactions   = data.transactions.map(tx => ({
       id:     tx.id,
-      type:   tx.type.toLowerCase(),     // 'DEPOSIT' → 'deposit'
+      type:   tx.type.toLowerCase(),
       desc:   tx.description ?? '',
       amount: Number(tx.amount),
       status: tx.status,
@@ -213,12 +265,10 @@ async function refreshWalletFromServer() {
   }
 }
 
-/** Derive stats from wallet transactions + round history */
 async function refreshStatsFromServer() {
   try {
     const data = await apiGet('/api/game/history?type=history');
 
-    // Reset stats
     let rounds = 0, wins = 0, losses = 0;
     let totalWagered = 0, totalWon = 0;
     let bestMult = 0, biggestWin = 0;
@@ -235,7 +285,6 @@ async function refreshStatsFromServer() {
       totalWagered += bet;
 
       if (mult !== null) {
-        // Won
         wins++;
         totalWon += payout;
         const profit = payout - bet;
@@ -244,7 +293,6 @@ async function refreshStatsFromServer() {
         if (mult > bestMult) bestMult = mult;
         if (profit > biggestWin) biggestWin = profit;
       } else {
-        // Busted
         losses++;
         pnlHistory.push(-bet);
         streakHistory.push('l');
@@ -253,7 +301,6 @@ async function refreshStatsFromServer() {
 
     STATE.stats = { rounds, wins, losses, totalWagered, totalWon, bestMult, biggestWin, pnlHistory, streakHistory };
 
-    // Also update round history for game sidebar
     STATE.game.roundHistory = data.slice(0, 20).map(r => ({
       roundId: r.id,
       crash:   parseFloat(r.crashPoint),
@@ -271,58 +318,92 @@ async function refreshStatsFromServer() {
 
 
 /* ============================================================
-   GAME POLLING — GET /api/game/state every 100ms
+   GAME POLLING — polls server every 1s for phase/roundId,
+   multiplier is interpolated client-side between polls.
 ============================================================ */
 
 function startGamePolling() {
-  if (STATE.game.tickId) clearInterval(STATE.game.tickId);
+  if (STATE.game.pollId) clearInterval(STATE.game.pollId);
 
-  STATE.game.tickId = setInterval(async () => {
+  // Poll immediately then every 1000ms
+  // Phase changes + round IDs need server truth; multiplier is interpolated
+  pollGameState();
+  STATE.game.pollId = setInterval(async () => {
     if (!STATE.loggedIn) return;
     await pollGameState();
-  }, 100);
+  }, 1000);
 }
 
-let _lastRoundId   = 0;
-let _lastPhase     = '';
-let _phaseEndTimer = null;
+let _lastRoundId = 0;
+let _lastPhase   = '';
 
 async function pollGameState() {
   let state;
   try {
     state = await apiGet('/api/game/state');
   } catch {
-    return; // silently skip failed polls
+    return;
   }
 
-  const G    = STATE.game;
-  const mult = parseFloat(state.multiplier);
+  const G = STATE.game;
 
-  G.multiplier  = mult;
-  G.phase       = state.phase;
-  G.roundId     = state.roundId;
-  G.phaseEndsAt = state.phaseEndsAt ? new Date(state.phaseEndsAt) : null;
-  G.myBet       = state.myBet ?? null;
+  const prevPhase   = G.phase;
+  G.phase           = state.phase;
+  G.roundId         = state.roundId;
+  G.phaseEndsAt     = state.phaseEndsAt ? new Date(state.phaseEndsAt) : null;
+  G.myBet           = state.myBet ?? null;
+  G.serverMult      = parseFloat(state.multiplier);
 
-  // Detect my cashout / bust from server state
-  if (G.myBet) {
-    if (G.myBet.cashoutMult) G.cashedOut = true;
+  // When RUNNING phase starts, record the server's start time so we can interpolate.
+  // The server sends runningStartedAt (when the running phase began).
+  if (state.phase === 'RUNNING') {
+    if (prevPhase !== 'RUNNING') {
+      // Phase just transitioned to RUNNING — anchor our interpolation start
+      // Use server-provided runningStartedAt if available, else approximate from server mult
+      if (state.runningStartedAt) {
+        G.runningStartedAt = new Date(state.runningStartedAt);
+      } else {
+        // Back-calculate start time from server multiplier:
+        // mult = 1 + elapsed^1.5 * 0.25 → elapsed = ((mult-1)/0.25)^(2/3)
+        const serverMult = G.serverMult;
+        if (serverMult > 1.001) {
+          const elapsed = Math.pow((serverMult - 1) / 0.25, 2 / 3);
+          G.runningStartedAt = new Date(Date.now() - elapsed * 1000);
+        } else {
+          G.runningStartedAt = new Date();
+        }
+      }
+    }
+    // Keep interpolation going — don't override G.multiplier here,
+    // the RAF loop handles that. But sync if we're drifting > 5%
+    const interp = calcMultiplierAt(G.runningStartedAt);
+    const drift  = Math.abs(interp - G.serverMult) / Math.max(G.serverMult, 1);
+    if (drift > 0.05) {
+      // Re-anchor to server truth to prevent drift accumulation
+      const elapsed = Math.pow((G.serverMult - 1) / 0.25, 2 / 3);
+      G.runningStartedAt = new Date(Date.now() - elapsed * 1000);
+    }
+  } else {
+    G.runningStartedAt = null;
+    // For non-RUNNING phases, use server multiplier directly
+    G.multiplier = G.serverMult;
+    _setMultDisplay(G.multiplier, state.phase === 'CRASHED');
+    _updateCheckpoints(G.multiplier);
+    _setProgress(G.multiplier);
   }
 
-  // ── Update visuals ────────────────────────────────────────────────────
-  _setMultDisplay(mult, state.phase === 'CRASHED');
-  _updateCheckpoints(mult);
-  _setProgress(mult);
+  if (G.myBet?.cashoutMult) G.cashedOut = true;
+
   updateBetControls();
   syncTopbar();
 
-  // ── Phase change detection ────────────────────────────────────────────
+  // Phase change detection
   if (state.phase !== _lastPhase) {
     _onPhaseChange(state.phase, state.roundId);
     _lastPhase = state.phase;
   }
 
-  // ── New round detection ───────────────────────────────────────────────
+  // New round detection
   if (state.roundId !== _lastRoundId && state.roundId > 0) {
     _lastRoundId = state.roundId;
     G.cashedOut  = false;
@@ -331,7 +412,7 @@ async function pollGameState() {
     _setProgress(0);
   }
 
-  // ── Phase countdown timer ─────────────────────────────────────────────
+  // Phase countdown timer
   if (G.phaseEndsAt) {
     const secsLeft = Math.max(0, Math.ceil((G.phaseEndsAt - Date.now()) / 1000));
     const timerEl  = document.getElementById('phase-timer');
@@ -372,31 +453,31 @@ function _onPhaseChange(phase, roundId) {
   }
 
   if (phase === 'CRASHED') {
+    G.runningStartedAt = null;
     _setPhaseTag('crashed', 'Crashed');
     document.querySelector('.arena-panel')?.classList.remove('is-live');
     document.querySelector('.arena-panel')?.classList.add('is-crashed');
-    document.getElementById('phase-timer').textContent =
-      `Crashed at ${G.multiplier.toFixed(2)}×`;
 
-    // Resolve my bet if I didn't cash out
+    const crashedMult = G.serverMult;
+    document.getElementById('phase-timer').textContent = `Crashed at ${crashedMult.toFixed(2)}×`;
+    _setMultDisplay(crashedMult, true);
+
     if (G.myBet && !G.cashedOut && !G.myBet.cashoutMult) {
-      const lost    = Number(G.myBet?.amount ?? 0);
+      const lost     = Number(G.myBet?.amount ?? 0);
       const statusEl = document.getElementById('bet-status');
       if (statusEl && lost > 0) {
         statusEl.className   = 'bet-status busted';
-        statusEl.textContent = `💀 Busted at ${G.multiplier.toFixed(2)}× — lost $${fmt(lost)}`;
+        statusEl.textContent = `💀 Busted at ${crashedMult.toFixed(2)}× — lost $${fmt(lost)}`;
         showResultFlash('loss', `-$${fmt(lost)}`);
       }
     }
 
-    // Refresh wallet + stats after round ends
     setTimeout(async () => {
       await refreshWalletFromServer();
       await refreshStatsFromServer();
       updateAllUI();
       renderRoundHistory();
-      pushToLiveFeed(roundId, G.multiplier);
-      // Re-render stats page if active
+      pushToLiveFeed(roundId, crashedMult);
       if (document.getElementById('page-stats')?.classList.contains('active')) renderStats();
     }, 300);
 
@@ -534,7 +615,6 @@ function renderHomeFeed() {
     }).join('');
   }
 
-  // Recent rounds deduplicated
   const seen   = new Set();
   const rounds = [];
   for (const e of feed) {
@@ -584,11 +664,10 @@ function updateAllUI() {
 
   _setEl('home-username', (STATE.user.username || 'PLAYER').toUpperCase());
 
-  // Game sidebar
   const wr = st.rounds > 0 ? Math.round((st.wins / st.rounds) * 100) : 0;
-  _setEl('gs-winrate',   `${wr}%`);
-  _setEl('gs-rounds',    st.rounds);
-  _setEl('gs-best-mult', st.bestMult > 0 ? `${st.bestMult.toFixed(2)}×` : '—');
+  _setEl('gs-winrate',     `${wr}%`);
+  _setEl('gs-rounds',      st.rounds);
+  _setEl('gs-best-mult',   st.bestMult > 0 ? `${st.bestMult.toFixed(2)}×` : '—');
   _setEl('gs-biggest-win', st.biggestWin > 0 ? `$${fmt(st.biggestWin)}` : '—');
 
   refreshWalletUI();
@@ -607,12 +686,19 @@ function setDepAmt(amt) {
 function _walletError(msg) {
   const el = document.getElementById('wallet-error');
   if (!el) return;
-  if (msg) { el.textContent = msg; el.classList.add('show'); }
-  else     { el.classList.remove('show'); el.textContent = ''; }
+  if (msg) {
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.classList.add('show');
+  } else {
+    el.style.display = 'none';
+    el.classList.remove('show');
+    el.textContent = '';
+  }
 }
 
 function _walletBusy(busy) {
-  const dep  = document.getElementById('btn-deposit');
+  const dep   = document.getElementById('btn-deposit');
   const with_ = document.getElementById('btn-withdraw');
   if (dep)   dep.disabled   = busy;
   if (with_) with_.disabled = busy;
@@ -621,13 +707,14 @@ function _walletBusy(busy) {
 /**
  * Deposit flow:
  * Player must have already sent Torn $ to house account.
- * They enter the amount + their Torn transaction ID.
- * Server verifies via Torn API before crediting.
+ * They enter the amount — server auto-scans the house Torn log for a match.
+ * No manual Transaction ID needed.
  */
 async function doDeposit() {
   _walletError(null);
 
-  const amount = parseFloat(document.getElementById('wallet-amount').value);
+  const amountRaw = document.getElementById('wallet-amount').value;
+  const amount    = parseFloat(amountRaw);
 
   if (isNaN(amount) || amount <= 0) return _walletError('Please enter a valid amount.');
   if (amount < 1000)                return _walletError('Minimum deposit is $1,000.');
@@ -653,7 +740,8 @@ async function doDeposit() {
 async function doWithdraw() {
   _walletError(null);
 
-  const amount = parseFloat(document.getElementById('wallet-amount').value);
+  const amountRaw = document.getElementById('wallet-amount').value;
+  const amount    = parseFloat(amountRaw);
 
   if (isNaN(amount) || amount <= 0) return _walletError('Please enter a valid amount.');
   if (amount < 1000)                return _walletError('Minimum withdrawal is $1,000.');
@@ -687,18 +775,16 @@ function refreshWalletUI() {
   _setEl('wallet-total-dep',  `$${fmt(w.totalDeposited)}`);
   _setEl('wallet-total-with', `$${fmt(w.totalWithdrawn)}`);
 
-  const pnl    = st.totalWon - st.totalWagered;
-  const pnlEl  = document.getElementById('wallet-net-pnl');
+  const pnl   = st.totalWon - st.totalWagered;
+  const pnlEl = document.getElementById('wallet-net-pnl');
   if (pnlEl) {
     pnlEl.textContent = `${pnl >= 0 ? '+' : '-'}$${fmt(Math.abs(pnl))}`;
     pnlEl.className   = `wbc-stat-val ${pnl >= 0 ? 'pos' : 'neg'}`;
   }
 
-  // Torn balance not shown (server-side only)
   const tornBalEl = document.getElementById('wallet-torn-bal');
   if (tornBalEl) tornBalEl.textContent = 'Verified server-side';
 
-  // Transaction list
   const listEl  = document.getElementById('tx-list');
   const countEl = document.getElementById('tx-count');
   if (!listEl) return;
@@ -719,8 +805,8 @@ function refreshWalletUI() {
   };
 
   listEl.innerHTML = txs.map(tx => {
-    const ic    = iconMap[tx.type] ?? { el: '·', cls: '' };
-    const isPos = (tx.type === 'deposit' || tx.type === 'bet_win');
+    const ic        = iconMap[tx.type] ?? { el: '·', cls: '' };
+    const isPos     = (tx.type === 'deposit' || tx.type === 'bet_win');
     const isPending = tx.status === 'PENDING';
     return `
       <div class="tx-item">
@@ -739,7 +825,7 @@ function refreshWalletUI() {
 function updateVerificationUI(valid) {
   const apiEl   = document.getElementById('v-api');
   const identEl = document.getElementById('v-identity');
-  if (apiEl)   { apiEl.textContent   = valid ? '✓ Valid'     : '✕ Invalid';   apiEl.className   = `verif-val ${valid ? 'ok' : 'fail'}`; }
+  if (apiEl)   { apiEl.textContent   = valid ? '✓ Valid'     : '✕ Invalid';  apiEl.className   = `verif-val ${valid ? 'ok' : 'fail'}`; }
   if (identEl) { identEl.textContent = valid ? '✓ Confirmed' : '✕ Mismatch'; identEl.className = `verif-val ${valid ? 'ok' : 'fail'}`; }
 }
 
@@ -781,13 +867,12 @@ async function cashOut() {
   if (!G.myBet)              { showToast('No active bet.', 'error'); return; }
   if (G.cashedOut)           { return; }
 
-  // Optimistically mark as cashed out to prevent double-tap
   G.cashedOut = true;
   updateBetControls();
 
   try {
-    const data = await apiPost('/api/game/cashout', {});
-    const mult = parseFloat(data.cashoutMult);
+    const data   = await apiPost('/api/game/cashout', {});
+    const mult   = parseFloat(data.cashoutMult);
     const profit = Number(data.profit);
 
     STATE.wallet.balance = Number(data.balance);
@@ -801,18 +886,16 @@ async function cashOut() {
     syncTopbar();
     updateAllUI();
 
-    // Update stats optimistically
     STATE.stats.wins++;
     STATE.stats.rounds++;
     STATE.stats.totalWon     += Number(data.payout);
     STATE.stats.totalWagered += G.myBet.amount;
-    if (mult > STATE.stats.bestMult)   STATE.stats.bestMult   = mult;
+    if (mult > STATE.stats.bestMult)     STATE.stats.bestMult   = mult;
     if (profit > STATE.stats.biggestWin) STATE.stats.biggestWin = profit;
 
     if (document.getElementById('page-stats')?.classList.contains('active')) renderStats();
 
   } catch (e) {
-    // Revert optimistic update if server rejected
     G.cashedOut = false;
     updateBetControls();
     showToast(e.message, 'error');
@@ -821,7 +904,7 @@ async function cashOut() {
 
 
 /* ============================================================
-   NPC PLAYERS  (visual only — not from server)
+   NPC PLAYERS  (visual only)
 ============================================================ */
 
 const NPC_NAMES = [
@@ -893,10 +976,8 @@ function renderActivePlayers(crashed = false) {
   const el = document.getElementById('active-players');
   if (!el) return;
 
-  // Refresh NPC list on new round
   if (STATE.game.phase === 'BETTING' && !crashed) {
     STATE.game.activePlayers = generateFakePlayers();
-    // Add self if has bet
     if (STATE.game.myBet) {
       STATE.game.activePlayers.unshift({
         name: STATE.user.username, bet: STATE.game.myBet.amount,
@@ -905,7 +986,6 @@ function renderActivePlayers(crashed = false) {
     }
   }
 
-  // Simulate NPC cashouts during RUNNING
   if (STATE.game.phase === 'RUNNING') {
     maybeAutoFakeCashouts(STATE.game.multiplier);
   }
@@ -935,8 +1015,8 @@ function renderActivePlayers(crashed = false) {
 }
 
 function pushToLiveFeed(roundId, crash) {
-  const G   = STATE.game;
-  let pnl   = 0;
+  const G = STATE.game;
+  let pnl = 0;
   if (G.myBet?.cashoutMult) {
     pnl = Math.floor(G.myBet.amount * G.myBet.cashoutMult) - G.myBet.amount;
   }
@@ -987,15 +1067,6 @@ function updateBetControls() {
     cashBtn.style.display = 'none';
     betInput.disabled     = G.phase !== 'BETTING' || !!G.myBet;
     betBtn.disabled       = G.phase !== 'BETTING' || !!G.myBet;
-  }
-
-  // Auto cash-out check (client-side trigger)
-  if (G.phase === 'RUNNING' && G.myBet && !G.cashedOut) {
-    const acoEnabled = document.getElementById('aco-enabled')?.checked;
-    const acoVal     = parseFloat(document.getElementById('aco-value')?.value);
-    if (acoEnabled && !isNaN(acoVal) && G.multiplier >= acoVal) {
-      cashOut();
-    }
   }
 }
 
@@ -1069,7 +1140,6 @@ async function loadLeaderboard() {
   }
 }
 
-// Seed with NPCs so leaderboard isn't empty on first load
 function seedLeaderboard() {
   const LB_NPC_NAMES = ['Phantom_X','VoidRunner','TornKing99','Blitz','NightHawk','CryptoViper','Renegade_K','Ghost404'];
   STATE.leaderboard = LB_NPC_NAMES.map(name => {
@@ -1142,7 +1212,6 @@ function renderStats() {
   _setEl('st-wl',      `${st.wins}W / ${st.losses}L`);
   _setEl('st-bestmult', st.bestMult > 0 ? `${st.bestMult.toFixed(2)}×` : '—');
 
-  // Avg cash-out from win transactions
   const winTxs   = txs.filter(t => t.type === 'bet_win');
   const multVals = winTxs.map(t => {
     const m = t.desc?.match(/at ([\d.]+)[×x]/);
@@ -1159,7 +1228,6 @@ function renderStats() {
   const pnlCard = document.getElementById('st-pnl-card');
   if (pnlCard) pnlCard.className = `stat-card ${pnl >= 0 ? 'sc-green' : 'sc-red'}`;
 
-  // P&L bar chart
   const chartEl = document.getElementById('pnl-chart');
   if (chartEl) {
     const history = st.pnlHistory.slice(-30);
@@ -1175,7 +1243,6 @@ function renderStats() {
     }
   }
 
-  // Streak dots
   const dotsEl    = document.getElementById('streak-dots');
   const summaryEl = document.getElementById('streak-summary');
   const streak    = st.streakHistory.slice(-40);
@@ -1220,14 +1287,12 @@ function _setEl(id, text) {
 
 document.addEventListener('DOMContentLoaded', () => {
 
-  // Enter key submits login
   ['login-username', 'login-apikey'].forEach(id => {
     document.getElementById(id)?.addEventListener('keydown', e => {
       if (e.key === 'Enter') doLogin();
     });
   });
 
-  // Close mobile nav on outside click
   document.addEventListener('click', e => {
     const dropdown = document.getElementById('mobile-nav-dropdown');
     const btn      = document.getElementById('mobile-menu-btn');

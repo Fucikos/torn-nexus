@@ -27,8 +27,10 @@ function generateCrashPoint(seed) {
 }
 
 // ── Multiplier from elapsed time (seconds) ─────────────────────────────────
+// NOTE: client/main.js uses the same formula for smooth interpolation.
+// If you change this, update calcMultiplierAt() in main.js too.
 function calcMultiplier(elapsedSec) {
-  return parseFloat((1 + Math.pow(elapsedSec, 1.5) * 0.25).toFixed(2))
+  return parseFloat((1 + Math.pow(elapsedSec, 1.5) * 0.25).toFixed(4))
 }
 
 // ── Main game loop ─────────────────────────────────────────────────────────
@@ -40,11 +42,12 @@ async function gameLoop() {
     where:  { id: 1 },
     update: {},
     create: {
-      id:          1,
-      roundId:     0,
-      phase:       'BETTING',
-      multiplier:  1.00,
-      phaseEndsAt: new Date(Date.now() + BETTING_DURATION_MS),
+      id:               1,
+      roundId:          0,
+      phase:            'BETTING',
+      multiplier:       1.00,
+      phaseEndsAt:      new Date(Date.now() + BETTING_DURATION_MS),
+      runningStartedAt: null,
     },
   })
 
@@ -66,14 +69,15 @@ async function runBettingPhase() {
     data: { crashPoint, seed, phase: 'BETTING' },
   })
 
-  // Update game state
+  // Update game state — clear runningStartedAt from previous round
   await prisma.gameState.update({
     where: { id: 1 },
     data: {
-      roundId:     round.id,
-      phase:       'BETTING',
-      multiplier:  1.00,
-      phaseEndsAt: endsAt,
+      roundId:          round.id,
+      phase:            'BETTING',
+      multiplier:       1.00,
+      phaseEndsAt:      endsAt,
+      runningStartedAt: null,
     },
   })
 
@@ -88,26 +92,33 @@ async function runRunningPhase() {
 
   const crashPoint = parseFloat(round.crashPoint.toString())
 
+  const startTime = new Date()
+
   await prisma.round.update({
     where: { id: round.id },
     data:  { phase: 'RUNNING' },
   })
 
+  // Store runningStartedAt so the client can anchor its interpolation clock
   await prisma.gameState.update({
     where: { id: 1 },
-    data:  { phase: 'RUNNING', phaseEndsAt: new Date(Date.now() + 120_000) },
+    data:  {
+      phase:            'RUNNING',
+      phaseEndsAt:      new Date(Date.now() + 120_000),
+      runningStartedAt: startTime,
+      multiplier:       1.00,
+    },
   })
 
   console.log(`[Round #${round.id}] Running…`)
-  const startTime = Date.now()
 
   while (true) {
     await sleep(TICK_INTERVAL_MS)
 
-    const elapsed = (Date.now() - startTime) / 1000
+    const elapsed = (Date.now() - startTime.getTime()) / 1000
     const mult    = calcMultiplier(elapsed)
 
-    // Update multiplier in DB every tick
+    // Update multiplier in DB every tick (used as server truth / sync check)
     await prisma.gameState.update({
       where: { id: 1 },
       data:  { multiplier: mult },
@@ -115,7 +126,7 @@ async function runRunningPhase() {
 
     // Crash check
     if (mult >= crashPoint) {
-      console.log(`[Round #${round.id}] CRASHED at ${mult}×`)
+      console.log(`[Round #${round.id}] CRASHED at ${mult.toFixed(4)}×`)
       await handleCrash(round.id, mult)
       return
     }
@@ -124,7 +135,6 @@ async function runRunningPhase() {
 
 // ── Crash resolution ───────────────────────────────────────────────────────
 async function handleCrash(roundId, finalMult) {
-  // Mark round as crashed
   await prisma.round.update({
     where: { id: roundId },
     data:  { phase: 'CRASHED', endedAt: new Date() },
@@ -132,7 +142,11 @@ async function handleCrash(roundId, finalMult) {
 
   await prisma.gameState.update({
     where: { id: 1 },
-    data:  { phase: 'CRASHED', multiplier: finalMult },
+    data:  {
+      phase:            'CRASHED',
+      multiplier:       finalMult,
+      runningStartedAt: null,
+    },
   })
 
   // Find all bets that didn't cash out and mark as losses
@@ -167,7 +181,11 @@ async function runCooldownPhase() {
   const endsAt = new Date(Date.now() + COOLDOWN_DURATION_MS)
   await prisma.gameState.update({
     where: { id: 1 },
-    data:  { phase: 'BETTING', phaseEndsAt: endsAt }, // set to BETTING early so UI counts down
+    data:  {
+      phase:            'BETTING',
+      phaseEndsAt:      endsAt,
+      runningStartedAt: null,
+    },
   })
   await sleep(COOLDOWN_DURATION_MS)
 }
