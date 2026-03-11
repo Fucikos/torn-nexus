@@ -84,7 +84,10 @@ model Round {
   @@map("rounds")
 }
 
+// COOLDOWN is used on GameState only (between rounds).
+// Round rows never use COOLDOWN — they go BETTING → RUNNING → CRASHED.
 enum RoundPhase {
+  COOLDOWN
   BETTING
   RUNNING
   CRASHED
@@ -112,7 +115,7 @@ model Bet {
 model GameState {
   id               Int        @id @default(1)
   roundId          Int        @map("round_id")
-  phase            RoundPhase @default(BETTING)
+  phase            RoundPhase @default(COOLDOWN)
   multiplier       Decimal    @default(1.00) @db.Decimal(10, 4)
   phaseEndsAt      DateTime   @map("phase_ends_at")
   runningStartedAt DateTime?  @map("running_started_at")
