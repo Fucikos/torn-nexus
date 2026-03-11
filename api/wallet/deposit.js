@@ -21,10 +21,11 @@ export default async function handler(req, res) {
   const houseId  = process.env.HOUSE_TORN_ID
   if (!houseKey || !houseId) { res.status(500).json({ error: 'Server misconfigured.' }); return }
 
-  // Fetch house money log (type 4801 = money received) from Torn API
+  // Fetch house money log (type 4810 = money received) from Torn API
+  // Using /user/?selections=log queries the key owner's own log
   let logEntries
   try {
-    const url  = `${TORN_BASE}/user/${houseId}?selections=log&log=4801&key=${houseKey}`
+    const url  = `${TORN_BASE}/user/?selections=log&log=4810&key=${houseKey}`
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'TornNexus/1.0' },
       signal:  AbortSignal.timeout(8000),
@@ -54,18 +55,32 @@ export default async function handler(req, res) {
   )
 
   // Scan log for a matching unused transfer from this player
-  // Log entry shape: { data: { sender: tornId, money: amount, ... }, timestamp: ... }
-  const match = logEntries.find(([txKey, entry]) => {
-    if (usedKeys.has(txKey))                              return false // already credited
-    if (Number(entry.data?.sender) !== user.tornId)       return false // wrong sender
-    if (Number(entry.data?.money ?? 0) < amount)          return false // amount too low
+  // Log entry shape: { log: 4810, data: { sender: tornId, money: amount, anonymous, message } }
+  // Sort by most recent first (highest timestamp wins) so we credit the latest matching tx
+  const sortedEntries = logEntries.sort(([, a], [, b]) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+
+  const match = sortedEntries.find(([txKey, entry]) => {
+    if (entry.log !== 4810)                                return false // only money-receive entries
+    if (usedKeys.has(txKey))                               return false // already credited
+    if (Number(entry.data?.sender) !== user.tornId)        return false // wrong sender
+    // Allow player to claim any amount <= what was actually sent
+    // (they may deposit partial amounts from a larger transfer)
+    if (Number(entry.data?.money ?? 0) < amount)           return false // sent less than claimed
     return true
   })
 
   if (!match) {
+    // Debug: log what we actually got so Railway logs show the mismatch
+    const sample = logEntries.slice(0, 5).map(([k, e]) => ({
+      key: k, logType: e.log, sender: e.data?.sender, money: e.data?.money, used: usedKeys.has(k),
+    }))
+    console.error('[deposit] No match. tornId:', user.tornId, 'amount:', amount,
+      'entries:', logEntries.length, 'sample:', JSON.stringify(sample))
+
     res.status(422).json({
-      error: `No matching transfer found from your account (Torn ID: ${user.tornId}) for $${amount.toLocaleString()}. ` +
-             `Make sure you sent the Torn $ to the house account first, then click Deposit again.`,
+      error: `No matching transfer found from Torn ID ${user.tornId} for $${amount.toLocaleString()}. ` +
+             `We scanned ${logEntries.length} recent receive entries. ` +
+             `Ensure you sent the exact amount to the house account, then try again.`,
     })
     return
   }
