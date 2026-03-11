@@ -627,24 +627,21 @@ function _walletBusy(busy) {
 async function doDeposit() {
   _walletError(null);
 
-  const amount   = parseFloat(document.getElementById('wallet-amount').value);
-  const tornTxId = parseInt(document.getElementById('wallet-torntx').value?.trim(), 10);
+  const amount = parseFloat(document.getElementById('wallet-amount').value);
 
   if (isNaN(amount) || amount <= 0) return _walletError('Please enter a valid amount.');
   if (amount < 1000)                return _walletError('Minimum deposit is $1,000.');
-  if (isNaN(tornTxId) || tornTxId <= 0) return _walletError('Please enter your Torn transaction ID.');
 
   _walletBusy(true);
-  showToast('Verifying with Torn API…', 'info');
+  showToast('Scanning house account for your transfer…', 'info');
 
   try {
-    const data = await apiPost('/api/wallet/deposit', { amount, tornTxId });
+    const data = await apiPost('/api/wallet/deposit', { amount });
     STATE.wallet.balance = Number(data.balance);
     await refreshWalletFromServer();
     updateAllUI();
     refreshWalletUI();
-    document.getElementById('wallet-amount').value  = '';
-    document.getElementById('wallet-torntx').value  = '';
+    document.getElementById('wallet-amount').value = '';
     showToast(data.message, 'success');
   } catch (e) {
     _walletError(e.message);
@@ -784,40 +781,21 @@ async function cashOut() {
   if (!G.myBet)              { showToast('No active bet.', 'error'); return; }
   if (G.cashedOut)           { return; }
 
-  // Enforce minimum cashout multiplier
-  const MIN_CASHOUT = 1.10;
-  if (G.multiplier < MIN_CASHOUT) {
-    showToast(`Minimum cash-out is ${MIN_CASHOUT}×`, 'error');
-    return;
-  }
-
   // Optimistically mark as cashed out to prevent double-tap
   G.cashedOut = true;
   updateBetControls();
 
   try {
     const data = await apiPost('/api/game/cashout', {});
-    const mult   = parseFloat(data.cashoutMult);
-    const payout = Number(data.payout);
-    const bet    = Number(G.myBet.amount);
+    const mult = parseFloat(data.cashoutMult);
+    const profit = Number(data.profit);
 
-    // Apply 3% cashout fee on low multipliers (under 1.5×)
-    // This discourages grinding tiny multipliers repeatedly
-    const FEE_RATE     = mult < 1.5 ? 0.03 : 0;
-    const fee          = Math.floor(payout * FEE_RATE);
-    const netPayout    = payout - fee;
-    const profit       = netPayout - bet;
-
-    STATE.wallet.balance = Number(data.balance) - fee;
-    G.myBet = { ...G.myBet, cashoutMult: mult, payout: netPayout };
+    STATE.wallet.balance = Number(data.balance);
+    G.myBet = { ...G.myBet, cashoutMult: mult, payout: Number(data.payout) };
 
     const statusEl = document.getElementById('bet-status');
-    statusEl.className = 'bet-status cashed-out';
-    if (fee > 0) {
-      statusEl.textContent = `✓ Cashed out at ${mult.toFixed(2)}× — won $${fmt(profit)} (fee: $${fmt(fee)})`;
-    } else {
-      statusEl.textContent = `✓ Cashed out at ${mult.toFixed(2)}× — won $${fmt(profit)}!`;
-    }
+    statusEl.className   = 'bet-status cashed-out';
+    statusEl.textContent = `✓ Cashed out at ${mult.toFixed(2)}× — won $${fmt(profit)}!`;
 
     showResultFlash('win', `+$${fmt(profit)}`);
     syncTopbar();
@@ -826,9 +804,9 @@ async function cashOut() {
     // Update stats optimistically
     STATE.stats.wins++;
     STATE.stats.rounds++;
-    STATE.stats.totalWon     += netPayout;
-    STATE.stats.totalWagered += bet;
-    if (mult > STATE.stats.bestMult)     STATE.stats.bestMult   = mult;
+    STATE.stats.totalWon     += Number(data.payout);
+    STATE.stats.totalWagered += G.myBet.amount;
+    if (mult > STATE.stats.bestMult)   STATE.stats.bestMult   = mult;
     if (profit > STATE.stats.biggestWin) STATE.stats.biggestWin = profit;
 
     if (document.getElementById('page-stats')?.classList.contains('active')) renderStats();
