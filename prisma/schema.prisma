@@ -42,7 +42,7 @@ model Transaction {
   type        TransactionType
   amount      BigInt
   description String?           @db.Text
-  tornTxId    Int?              @unique @map("torn_tx_id")
+  tornTxKey   String?           @unique @map("torn_tx_key") @db.Text
   roundId     Int?              @map("round_id")
   status      TransactionStatus @default(COMPLETED)
   createdAt   DateTime          @default(now()) @map("created_at")
@@ -71,12 +71,12 @@ enum TransactionStatus {
 }
 
 model Round {
-  id          Int        @id @default(autoincrement())
-  crashPoint  Decimal    @map("crash_point") @db.Decimal(10, 2)
-  seed        String     @db.Text
-  phase       RoundPhase @default(BETTING)
-  startedAt   DateTime   @default(now()) @map("started_at")
-  endedAt     DateTime?  @map("ended_at")
+  id         Int        @id @default(autoincrement())
+  crashPoint Decimal    @map("crash_point") @db.Decimal(10, 2)
+  seed       String     @db.Text
+  phase      RoundPhase @default(BETTING)
+  startedAt  DateTime   @default(now()) @map("started_at")
+  endedAt    DateTime?  @map("ended_at")
 
   bets         Bet[]
   transactions Transaction[]
@@ -93,16 +93,17 @@ enum RoundPhase {
 }
 
 model Bet {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @map("user_id")
-  roundId      Int      @map("round_id")
-  amount       BigInt
-  cashoutMult  Decimal? @map("cashout_mult") @db.Decimal(10, 2)
-  payout       BigInt   @default(0)
-  createdAt    DateTime @default(now()) @map("created_at")
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  roundId     Int      @map("round_id")
+  amount      BigInt
+  cashoutMult Decimal? @map("cashout_mult") @db.Decimal(10, 2)
+  payout      BigInt   @default(0)
+  fee         BigInt   @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
 
-  user         User     @relation(fields: [userId], references: [id])
-  round        Round    @relation(fields: [roundId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+  round       Round    @relation(fields: [roundId], references: [id])
 
   @@unique([userId, roundId])
   @@map("bets")
