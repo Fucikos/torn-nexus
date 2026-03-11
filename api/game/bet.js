@@ -1,6 +1,10 @@
+// api/game/bet.js
 import { requireAuth } from '../../lib/auth.js'
 import { prisma }      from '../../lib/prisma.js'
 import { handleCors }  from '../../lib/response.js'
+
+const MIN_BET = 100
+const MAX_BET = 10_000_000
 
 export default async function handler(req, res) {
   if (handleCors(req, res)) return
@@ -9,37 +13,41 @@ export default async function handler(req, res) {
   const user = await requireAuth(req, res)
   if (!user) return
 
+  // Coerce amount to a clean integer
   const rawAmount = req.body?.amount
   const amount    = typeof rawAmount === 'number' ? rawAmount : parseFloat(rawAmount)
 
-  if (!amount || isNaN(amount) || amount <= 0) { res.status(400).json({ error: 'amount must be a number.' }); return }
-  if (amount < 100)      { res.status(400).json({ error: 'Minimum bet is $100.' }); return }
-  if (amount > 10000000) { res.status(400).json({ error: 'Maximum bet is $10,000,000.' }); return }
+  if (!amount || isNaN(amount) || amount <= 0) { res.status(400).json({ error: 'amount must be a positive number.' }); return }
+  if (amount < MIN_BET) { res.status(400).json({ error: `Minimum bet is $${MIN_BET.toLocaleString()}.` }); return }
+  if (amount > MAX_BET) { res.status(400).json({ error: `Maximum bet is $${MAX_BET.toLocaleString()}.` }); return }
 
   const amountBig = BigInt(Math.floor(amount))
 
+  // ── Phase check ────────────────────────────────────────────────────────────
+  // Only accept bets in the BETTING phase.
+  // COOLDOWN and CRASHED are both closed — never allow betting against a
+  // round that is already running or finished.
   const state = await prisma.gameState.findUnique({ where: { id: 1 } })
-
-  // Must be BETTING phase specifically — COOLDOWN phase also has roundId set but is NOT open
   if (!state || state.phase !== 'BETTING') {
-    res.status(409).json({ error: 'Betting is closed for this round.' })
+    res.status(409).json({ error: 'Betting is closed — wait for the next round.' })
     return
   }
 
-  // Verify the round itself is still in BETTING phase (double-check against Round table)
+  // Double-check the Round row itself is still in BETTING state
   const round = await prisma.round.findUnique({ where: { id: state.roundId } })
   if (!round || round.phase !== 'BETTING') {
-    res.status(409).json({ error: 'Betting is closed for this round.' })
+    res.status(409).json({ error: 'Betting is closed — round has already started.' })
     return
   }
 
+  // ── Balance check ──────────────────────────────────────────────────────────
   const wallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
   if (!wallet || wallet.balance < amountBig) {
     res.status(422).json({ error: 'Insufficient balance.' })
     return
   }
 
-  // Check for existing bet on this round
+  // ── Duplicate bet guard ────────────────────────────────────────────────────
   const existing = await prisma.bet.findUnique({
     where: { userId_roundId: { userId: user.id, roundId: state.roundId } },
   })
@@ -48,6 +56,7 @@ export default async function handler(req, res) {
     return
   }
 
+  // ── Atomic debit + bet creation ────────────────────────────────────────────
   await prisma.$transaction([
     prisma.wallet.update({
       where: { userId: user.id },
@@ -65,8 +74,8 @@ export default async function handler(req, res) {
 
   const updatedWallet = await prisma.wallet.findUnique({ where: { userId: user.id } })
   res.status(200).json({
-    message:  `Bet placed for round #${state.roundId}.`,
-    balance:  updatedWallet.balance.toString(),
-    roundId:  state.roundId,
+    message: `Bet of $${Math.floor(amount).toLocaleString()} placed for round #${state.roundId}.`,
+    balance: updatedWallet.balance.toString(),
+    roundId: state.roundId,
   })
 }

@@ -1,7 +1,7 @@
 // game-server/index.js
-// Persistent Node.js process — runs on Railway (NOT Vercel).
-// Manages the crash game loop: betting → running → crashed → cooldown → repeat.
-// Writes game state to the shared Supabase DB every tick so Vercel API routes can serve it.
+// Persistent Node.js process — runs on Railway.
+// REWRITTEN from scratch for correctness and smoothness.
+// Loop: BETTING (8s) → RUNNING (until crash) → COOLDOWN (4s) → repeat
 
 import { PrismaClient } from '@prisma/client'
 import { createHmac, randomBytes } from 'crypto'
@@ -9,67 +9,74 @@ import { createHmac, randomBytes } from 'crypto'
 const prisma = new PrismaClient()
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const BETTING_DURATION_MS  = 8_000   //  8 second betting window
-const COOLDOWN_DURATION_MS = 4_000   //  4 second cooldown between rounds
-const TICK_INTERVAL_MS     = 100     //  update multiplier every 100ms
-const HOUSE_EDGE           = 0.03    //  3%
+const BETTING_MS  = 8_000    // 8s betting window
+const COOLDOWN_MS = 4_000    // 4s cooldown after crash
+const TICK_MS     = 100      // server tick rate
+const HOUSE_EDGE  = 0.03     // 3%
 
 // ── Crash point generation (provably fair) ─────────────────────────────────
+// Returns a crash point ≥ 1.00. The house edge is enforced by a 3% chance
+// of instant crash at exactly 1.00×.
 function generateCrashPoint(seed) {
   const hash = createHmac('sha256', seed).digest('hex')
   const r    = parseInt(hash.slice(0, 8), 16) / 0xFFFFFFFF
 
-  // 3% instant-crash enforces house edge
   if (r < HOUSE_EDGE) return 1.00
 
+  // Inverse of survival function: ensures E[payout] = 1 - houseEdge
   const crash = 1 / (1 - r * (1 - HOUSE_EDGE))
-  return Math.min(parseFloat(crash.toFixed(2)), 1000)
+  return Math.min(parseFloat(crash.toFixed(2)), 1000.00)
 }
 
-// ── Multiplier from elapsed time (seconds) ─────────────────────────────────
-// NOTE: client/main.js uses the same formula for smooth interpolation.
-// If you change this, update calcMultiplierAt() in main.js too.
+// ── Multiplier curve ───────────────────────────────────────────────────────
+// IMPORTANT: client/main.js must use the identical formula.
+// mult(t) = 1 + 0.25 * t^1.5   where t = elapsed seconds since round start
 function calcMultiplier(elapsedSec) {
+  if (elapsedSec <= 0) return 1.00
   return parseFloat((1 + Math.pow(elapsedSec, 1.5) * 0.25).toFixed(4))
 }
 
-// ── Main game loop ─────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// ── Main loop ──────────────────────────────────────────────────────────────
 async function gameLoop() {
   console.log('[GameServer] Starting game loop…')
 
-  // Ensure game_state row exists
+  // Ensure the singleton game_state row exists
   await prisma.gameState.upsert({
     where:  { id: 1 },
     update: {},
     create: {
       id:               1,
       roundId:          0,
-      phase:            'BETTING',
+      phase:            'COOLDOWN',
       multiplier:       1.00,
-      phaseEndsAt:      new Date(Date.now() + BETTING_DURATION_MS),
+      phaseEndsAt:      new Date(Date.now() + COOLDOWN_MS),
       runningStartedAt: null,
     },
   })
 
   while (true) {
-    await runBettingPhase()
-    await runRunningPhase()
-    await runCooldownPhase()
+    await phaseBetting()
+    await phaseRunning()
+    await phaseCooldown()
   }
 }
 
-// ── Phase 1: Betting (8s) ──────────────────────────────────────────────────
-async function runBettingPhase() {
+// ── Phase 1: BETTING ───────────────────────────────────────────────────────
+async function phaseBetting() {
   const seed       = randomBytes(32).toString('hex')
   const crashPoint = generateCrashPoint(seed)
-  const endsAt     = new Date(Date.now() + BETTING_DURATION_MS)
+  const endsAt     = new Date(Date.now() + BETTING_MS)
 
-  // Create the round row
+  // Create round — crash point is hidden from clients until after crash
   const round = await prisma.round.create({
     data: { crashPoint, seed, phase: 'BETTING' },
   })
 
-  // Update game state — clear runningStartedAt from previous round
   await prisma.gameState.update({
     where: { id: 1 },
     data: {
@@ -81,75 +88,77 @@ async function runBettingPhase() {
     },
   })
 
-  console.log(`[Round #${round.id}] Betting open — crash at ${crashPoint}× (hidden)`)
-  await sleep(BETTING_DURATION_MS)
+  console.log(`[Round #${round.id}] BETTING open (crash at ${crashPoint}× hidden)`)
+  await sleep(BETTING_MS)
 }
 
-// ── Phase 2: Running (until crash) ────────────────────────────────────────
-async function runRunningPhase() {
+// ── Phase 2: RUNNING ───────────────────────────────────────────────────────
+async function phaseRunning() {
+  // Fetch current state to get roundId
   const state = await prisma.gameState.findUnique({ where: { id: 1 } })
   const round = await prisma.round.findUnique({ where: { id: state.roundId } })
-
   const crashPoint = parseFloat(round.crashPoint.toString())
 
-  const startTime = new Date()
+  // Record the exact start time — clients will anchor their clock to this
+  const startedAt = new Date()
 
   await prisma.round.update({
     where: { id: round.id },
     data:  { phase: 'RUNNING' },
   })
 
-  // Store runningStartedAt so the client can anchor its interpolation clock
   await prisma.gameState.update({
     where: { id: 1 },
-    data:  {
+    data: {
       phase:            'RUNNING',
-      phaseEndsAt:      new Date(Date.now() + 120_000),
-      runningStartedAt: startTime,
       multiplier:       1.00,
+      phaseEndsAt:      new Date(Date.now() + 120_000), // safety ceiling
+      runningStartedAt: startedAt,
     },
   })
 
-  console.log(`[Round #${round.id}] Running…`)
+  console.log(`[Round #${round.id}] RUNNING (crash at ${crashPoint}×)`)
 
+  // Tick loop
   while (true) {
-    await sleep(TICK_INTERVAL_MS)
+    await sleep(TICK_MS)
 
-    const elapsed = (Date.now() - startTime.getTime()) / 1000
+    const elapsed = (Date.now() - startedAt.getTime()) / 1000
     const mult    = calcMultiplier(elapsed)
 
-    // Update multiplier in DB every tick (used as server truth / sync check)
+    // Write server-truth multiplier every tick — used for drift correction
     await prisma.gameState.update({
       where: { id: 1 },
       data:  { multiplier: mult },
     })
 
-    // Crash check
     if (mult >= crashPoint) {
       console.log(`[Round #${round.id}] CRASHED at ${mult.toFixed(4)}×`)
-      await handleCrash(round.id, mult)
+      await resolveCrash(round.id, mult)
       return
     }
   }
 }
 
 // ── Crash resolution ───────────────────────────────────────────────────────
-async function handleCrash(roundId, finalMult) {
+async function resolveCrash(roundId, finalMult) {
+  // Mark round crashed
   await prisma.round.update({
     where: { id: roundId },
     data:  { phase: 'CRASHED', endedAt: new Date() },
   })
 
+  // Update game state to CRASHED so clients immediately see it
   await prisma.gameState.update({
     where: { id: 1 },
-    data:  {
+    data: {
       phase:            'CRASHED',
       multiplier:       finalMult,
       runningStartedAt: null,
     },
   })
 
-  // Find all bets that didn't cash out and mark as losses
+  // Settle all bets that didn't cash out
   const bustedBets = await prisma.bet.findMany({
     where: { roundId, cashoutMult: null },
   })
@@ -176,27 +185,26 @@ async function handleCrash(roundId, finalMult) {
   console.log(`[Round #${roundId}] ${bustedBets.length} busted bet(s) resolved.`)
 }
 
-// ── Phase 3: Cooldown (4s) ─────────────────────────────────────────────────
-async function runCooldownPhase() {
-  const endsAt = new Date(Date.now() + COOLDOWN_DURATION_MS)
+// ── Phase 3: COOLDOWN ──────────────────────────────────────────────────────
+// Phase stays CRASHED visually but we update phaseEndsAt for the countdown.
+// We do NOT flip to BETTING here — only phaseBetting() creates the new round.
+async function phaseCooldown() {
+  const endsAt = new Date(Date.now() + COOLDOWN_MS)
+
   await prisma.gameState.update({
     where: { id: 1 },
-    data:  {
-      phase:            'BETTING',
+    data: {
+      phase:            'COOLDOWN',
       phaseEndsAt:      endsAt,
       runningStartedAt: null,
     },
   })
-  await sleep(COOLDOWN_DURATION_MS)
-}
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  await sleep(COOLDOWN_MS)
 }
 
 // ── Start ──────────────────────────────────────────────────────────────────
 gameLoop().catch(err => {
-  console.error('[GameServer] Fatal error:', err)
+  console.error('[GameServer] Fatal:', err)
   process.exit(1)
 })
