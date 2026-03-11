@@ -344,62 +344,47 @@ async function pollGameState() {
   } catch {
     return;
   }
-  // Record when the response arrived — used to compensate for network latency
-  // when re-anchoring the interpolation clock (Fix 5).
-  const fetchedAt = Date.now();
+  const receiveTime = Date.now(); // timestamp of when we received fresh server data
 
   const G = STATE.game;
 
   const prevPhase   = G.phase;
-  const prevRoundId = G.roundId;
+  G.phase           = state.phase;
+  G.roundId         = state.roundId;
+  G.phaseEndsAt     = state.phaseEndsAt ? new Date(state.phaseEndsAt) : null;
+  G.myBet           = state.myBet ?? null;
+  G.serverMult      = parseFloat(state.multiplier);
 
-  G.phase       = state.phase;
-  G.roundId     = state.roundId;
-  G.phaseEndsAt = state.phaseEndsAt ? new Date(state.phaseEndsAt) : null;
-  G.serverMult  = parseFloat(state.multiplier);
-
-  // FIX 1: Only update myBet from server when we're in RUNNING/BETTING.
-  // During a round transition the server may send stale myBet before the
-  // round reset below clears it — don't overwrite the cleared state.
-  // We update myBet from server truth in all phases, but do NOT null it here;
-  // the round-reset block below is the sole place that clears it.
-  if (state.myBet !== undefined) {
-    G.myBet = state.myBet ?? null;
-  }
-
+  // When RUNNING phase starts, record the server's start time so we can interpolate.
+  // The server sends runningStartedAt (when the running phase began).
   if (state.phase === 'RUNNING') {
     if (prevPhase !== 'RUNNING') {
-      // Phase just transitioned to RUNNING — anchor interpolation clock.
-      // FIX 2: server now sends runningStartedAt so this branch always hits.
+      // Phase just transitioned to RUNNING — anchor our interpolation start
       if (state.runningStartedAt) {
         G.runningStartedAt = new Date(state.runningStartedAt);
       } else {
-        // Fallback: back-calculate from server multiplier, compensating for
-        // network latency so the anchor isn't systematically behind.
-        // mult = 1 + elapsed^1.5 * 0.25  →  elapsed = ((mult-1)/0.25)^(2/3)
+        // Back-calculate start time from server multiplier:
+        // mult = 1 + elapsed^1.5 * 0.25 → elapsed = ((mult-1)/0.25)^(2/3)
         const serverMult = G.serverMult;
         if (serverMult > 1.001) {
           const elapsed = Math.pow((serverMult - 1) / 0.25, 2 / 3);
-          G.runningStartedAt = new Date(fetchedAt - elapsed * 1000);
+          G.runningStartedAt = new Date(receiveTime - elapsed * 1000);
         } else {
-          G.runningStartedAt = new Date(fetchedAt);
+          G.runningStartedAt = new Date(receiveTime);
         }
       }
     }
-
-    // FIX 5: Drift correction — re-anchor only when drift exceeds 5%, and use
-    // fetchedAt (not Date.now()) so we don't add extra latency on top of a
-    // stale server multiplier value.
+    // Sync check: if client has drifted >5% from server truth, re-anchor.
+    // Use receiveTime (not Date.now()) so we don't compound stale-mult lag.
     const interp = calcMultiplierAt(G.runningStartedAt);
     const drift  = Math.abs(interp - G.serverMult) / Math.max(G.serverMult, 1);
     if (drift > 0.05) {
       const elapsed = Math.pow((G.serverMult - 1) / 0.25, 2 / 3);
-      G.runningStartedAt = new Date(fetchedAt - elapsed * 1000);
+      G.runningStartedAt = new Date(receiveTime - elapsed * 1000);
     }
-    // RAF loop owns G.multiplier during RUNNING — don't override it here.
-
   } else {
     G.runningStartedAt = null;
+    // For non-RUNNING phases, use server multiplier directly
     G.multiplier = G.serverMult;
     _setMultDisplay(G.multiplier, state.phase === 'CRASHED');
     _updateCheckpoints(G.multiplier);
@@ -408,30 +393,23 @@ async function pollGameState() {
 
   if (G.myBet?.cashoutMult) G.cashedOut = true;
 
-  // FIX 1: Phase change fires BEFORE round reset so _onPhaseChange('BETTING')
-  // can safely read G.myBet/G.cashedOut with correct values.
-  if (state.phase !== _lastPhase) {
-    _onPhaseChange(state.phase, state.roundId);
-    _lastPhase = state.phase;
-  }
-
-  // FIX 1: Round reset runs AFTER phase change. myBet is only cleared once
-  // we're certain the new betting window is open (phase already handled above).
-  // FIX 4: Call updateBetControls() immediately after reset so buttons
-  // reflect the cleared state without waiting for the next RAF tick.
-  if (state.roundId !== _lastRoundId && state.roundId > 0) {
-    _lastRoundId = state.roundId;
-    G.cashedOut  = false;
-    G.myBet      = null;
-    _resetCheckpoints();
-    _setProgress(0);
-    updateBetControls();   // FIX 4 — immediate button state refresh
-  }
-
   updateBetControls();
   syncTopbar();
 
-  // Phase countdown timer — also handles COOLDOWN phase
+  // Phase change detection
+  if (state.phase !== _lastPhase) {
+    _onPhaseChange(state.phase, state.roundId, state);
+    _lastPhase = state.phase;
+  }
+
+  // New round detection — only update the ID tracker here.
+  // State reset (myBet/cashedOut) happens inside _onPhaseChange('BETTING')
+  // so we don't wipe bets before the phase transition is processed.
+  if (state.roundId !== _lastRoundId && state.roundId > 0) {
+    _lastRoundId = state.roundId;
+  }
+
+  // Phase countdown timer
   if (G.phaseEndsAt) {
     const secsLeft = Math.max(0, Math.ceil((G.phaseEndsAt - Date.now()) / 1000));
     const timerEl  = document.getElementById('phase-timer');
@@ -447,14 +425,19 @@ async function pollGameState() {
   }
 }
 
-function _onPhaseChange(phase, roundId) {
+function _onPhaseChange(phase, roundId, state = {}) {
   const G = STATE.game;
 
   if (phase === 'BETTING') {
-    _setPhaseTag('betting', 'Betting Open');
-    _setMultDisplay(1.00, false);
+    // Safe to reset round state now — we know a fresh betting window is open
+    G.cashedOut = false;
+    G.myBet     = state?.myBet ?? null; // re-read from server in case of reload
     _resetCheckpoints();
     _setProgress(0);
+    updateBetControls(); // immediately reflect reset state
+
+    _setPhaseTag('betting', 'Betting Open');
+    _setMultDisplay(1.00, false);
     document.querySelector('.arena-panel')?.classList.remove('is-live', 'is-crashed');
     const statusEl = document.getElementById('bet-status');
     if (statusEl && !G.myBet) {
@@ -464,18 +447,18 @@ function _onPhaseChange(phase, roundId) {
     renderActivePlayers();
   }
 
+  if (phase === 'COOLDOWN') {
+    _setPhaseTag('crashed', 'Next Round Soon');
+    document.querySelector('.arena-panel')?.classList.remove('is-live');
+    document.querySelector('.arena-panel')?.classList.add('is-crashed');
+    updateBetControls();
+  }
+
   if (phase === 'RUNNING') {
     _setPhaseTag('running', 'Round Live');
     document.getElementById('phase-timer').textContent = '';
     document.querySelector('.arena-panel')?.classList.remove('is-crashed');
     document.querySelector('.arena-panel')?.classList.add('is-live');
-  }
-
-  if (phase === 'COOLDOWN') {
-    _setPhaseTag('crashed', 'Cooldown');
-    document.querySelector('.arena-panel')?.classList.remove('is-live');
-    document.querySelector('.arena-panel')?.classList.add('is-crashed');
-    renderActivePlayers(true);
   }
 
   if (phase === 'CRASHED') {

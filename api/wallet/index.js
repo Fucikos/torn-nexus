@@ -11,8 +11,6 @@ const prisma = new PrismaClient()
 // ── Constants ──────────────────────────────────────────────────────────────
 const BETTING_DURATION_MS  = 8_000   //  8 second betting window
 const COOLDOWN_DURATION_MS = 4_000   //  4 second cooldown between rounds
-// NOTE: During cooldown the DB phase is set to 'COOLDOWN', not 'BETTING'.
-// 'BETTING' is only set once the new round row exists in runBettingPhase().
 const TICK_INTERVAL_MS     = 100     //  update multiplier every 100ms
 const HOUSE_EDGE           = 0.03    //  3%
 
@@ -46,7 +44,7 @@ async function gameLoop() {
     create: {
       id:               1,
       roundId:          0,
-      phase:            'COOLDOWN',
+      phase:            'BETTING',
       multiplier:       1.00,
       phaseEndsAt:      new Date(Date.now() + BETTING_DURATION_MS),
       runningStartedAt: null,
@@ -179,9 +177,8 @@ async function handleCrash(roundId, finalMult) {
 }
 
 // ── Phase 3: Cooldown (4s) ─────────────────────────────────────────────────
-// Set phase to COOLDOWN (not BETTING) so clients don't try to place bets
-// before the new round row exists. BETTING is set inside runBettingPhase()
-// only after the round has been created.
+// Sets phase to COOLDOWN (not BETTING) so clients don't try to bet against
+// an already-crashed roundId while we wait for the next round to be created.
 async function runCooldownPhase() {
   const endsAt = new Date(Date.now() + COOLDOWN_DURATION_MS)
   await prisma.gameState.update({

@@ -28,7 +28,8 @@ export default async function handler(req, res) {
   const bet = await prisma.bet.findUnique({
     where: { userId_roundId: { userId: user.id, roundId: state.roundId } },
   })
-  if (!bet) { res.status(404).json({ error: 'No active bet found.' }); return }
+  if (!bet)            { res.status(404).json({ error: 'No active bet found.' }); return }
+  if (bet.cashoutMult) { res.status(409).json({ error: 'Already cashed out.' }); return }
 
   // Calculate payout with fee for low multipliers
   const rawPayout = BigInt(Math.floor(Number(bet.amount) * currentMult))
@@ -41,14 +42,14 @@ export default async function handler(req, res) {
     ? `Cashed out at ${currentMult.toFixed(2)}× — Round #${state.roundId} (fee: $${fee.toString()})`
     : `Cashed out at ${currentMult.toFixed(2)}× — Round #${state.roundId}`
 
-  // Atomically claim the cashout — only succeeds if cashoutMult is still null.
-  // This eliminates the race condition where two simultaneous requests both
-  // pass the read-check before either write completes.
-  const claimed = await prisma.bet.updateMany({
+  // Atomically mark cashout only if not already cashed out (prevents race condition
+  // where two simultaneous requests both pass the cashoutMult null-check above)
+  const updateResult = await prisma.bet.updateMany({
     where: { id: bet.id, cashoutMult: null },
     data:  { cashoutMult: currentMult, payout },
   })
-  if (claimed.count === 0) {
+
+  if (updateResult.count === 0) {
     res.status(409).json({ error: 'Already cashed out.' }); return
   }
 
