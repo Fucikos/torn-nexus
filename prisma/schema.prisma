@@ -85,7 +85,7 @@ model Round {
 }
 
 // COOLDOWN is used on GameState only (between rounds).
-// Round rows never use COOLDOWN — they go BETTING → RUNNING → CRASHED.
+// Round rows never use COOLDOWN - they go BETTING -> RUNNING -> CRASHED.
 enum RoundPhase {
   COOLDOWN
   BETTING
