@@ -1,7 +1,10 @@
 // api/game/state.js
+// Returns the player's active game state (if any) plus recent game history.
+
 import { requireAuth } from '../../lib/auth.js'
 import { prisma }      from '../../lib/prisma.js'
 import { handleCors }  from '../../lib/response.js'
+import { MULTIPLIERS } from '../../lib/gameLogic.js'
 
 export default async function handler(req, res) {
   if (handleCors(req, res)) return
@@ -10,45 +13,45 @@ export default async function handler(req, res) {
   const user = await requireAuth(req, res)
   if (!user) return
 
-  const state = await prisma.gameState.findUnique({ where: { id: 1 } })
+  // Active game
+  const activeGame = await prisma.game.findFirst({
+    where: { userId: user.id, status: 'ACTIVE' },
+  })
 
-  if (!state) {
-    res.status(200).json({
-      phase:            'WAITING',
-      roundId:          0,
-      multiplier:       '1.00',
-      phaseEndsAt:      null,
-      runningStartedAt: null,
-      updatedAt:        new Date().toISOString(),
-      myBet:            null,
-    })
-    return
-  }
-
-  // Look up the player's bet for the current round
-  let myBet = null
-  if (state.roundId > 0) {
-    const bet = await prisma.bet.findUnique({
-      where: { userId_roundId: { userId: user.id, roundId: state.roundId } },
-    })
-    if (bet) {
-      myBet = {
-        amount:      bet.amount.toString(),
-        cashoutMult: bet.cashoutMult?.toString() ?? null,
-        payout:      bet.payout.toString(),
-        // busted = no cashout AND the round has ended
-        busted: bet.cashoutMult === null && (state.phase === 'CRASHED' || state.phase === 'COOLDOWN'),
-      }
-    }
-  }
+  // Last 20 completed games for history
+  const history = await prisma.game.findMany({
+    where:   { userId: user.id, status: { not: 'ACTIVE' } },
+    orderBy: { createdAt: 'desc' },
+    take:    20,
+    select: {
+      id:           true,
+      betAmount:    true,
+      stepsReached: true,
+      cashoutMult:  true,
+      payout:       true,
+      status:       true,
+      createdAt:    true,
+    },
+  })
 
   res.status(200).json({
-    phase:            state.phase,
-    roundId:          state.roundId,
-    multiplier:       state.multiplier.toString(),
-    phaseEndsAt:      state.phaseEndsAt?.toISOString() ?? null,
-    runningStartedAt: state.runningStartedAt?.toISOString() ?? null,
-    updatedAt:        state.updatedAt.toISOString(),
-    myBet,
+    activeGame: activeGame ? {
+      gameId:       activeGame.id,
+      betAmount:    activeGame.betAmount.toString(),
+      stepsReached: activeGame.stepsReached,
+      currentMult:  MULTIPLIERS[activeGame.stepsReached],
+      nextMult:     MULTIPLIERS[activeGame.stepsReached + 1] ?? null,
+      status:       activeGame.status,
+    } : null,
+    history: history.map(g => ({
+      gameId:       g.id,
+      betAmount:    g.betAmount.toString(),
+      stepsReached: g.stepsReached,
+      cashoutMult:  g.cashoutMult ? parseFloat(g.cashoutMult.toString()) : null,
+      payout:       g.payout.toString(),
+      status:       g.status,
+      createdAt:    g.createdAt.toISOString(),
+    })),
+    multipliers: MULTIPLIERS,
   })
 }

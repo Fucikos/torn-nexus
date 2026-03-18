@@ -1,7 +1,27 @@
 {
-  "version": 2,
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)",     "destination": "/client/$1" }
-  ]
+  "name": "torn-nexus",
+  "version": "1.0.0",
+  "description": "Torn City underground betting exchange",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "prisma generate",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "5.10.0",
+    "bcryptjs": "^2.4.3",
+    "jose": "^5.2.3",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "prisma": "5.10.0",
+    "vercel": "^33.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

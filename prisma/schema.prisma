@@ -17,7 +17,7 @@ model User {
   lastSeen     DateTime @default(now()) @map("last_seen")
 
   wallet       Wallet?
-  bets         Bet[]
+  games        Game[]
   transactions Transaction[]
 
   @@map("users")
@@ -43,12 +43,12 @@ model Transaction {
   amount      BigInt
   description String?           @db.Text
   tornTxKey   String?           @unique @map("torn_tx_key") @db.Text
-  roundId     Int?              @map("round_id")
+  gameId      Int?              @map("game_id")
   status      TransactionStatus @default(COMPLETED)
   createdAt   DateTime          @default(now()) @map("created_at")
 
   user        User              @relation(fields: [userId], references: [id])
-  round       Round?            @relation(fields: [roundId], references: [id])
+  game        Game?             @relation(fields: [gameId], references: [id])
 
   @@map("transactions")
 }
@@ -70,56 +70,33 @@ enum TransactionStatus {
   @@map("transaction_status")
 }
 
-model Round {
-  id         Int        @id @default(autoincrement())
-  crashPoint Decimal    @map("crash_point") @db.Decimal(10, 4)
-  seed       String     @db.Text
-  phase      RoundPhase @default(BETTING)
-  startedAt  DateTime   @default(now()) @map("started_at")
-  endedAt    DateTime?  @map("ended_at")
+// One Game = one full crossing attempt by one player
+model Game {
+  id           Int        @id @default(autoincrement())
+  userId       Int        @map("user_id")
+  betAmount    BigInt     @map("bet_amount")
+  // Seed used server-side to pre-determine all 8 outcomes (never sent to client)
+  seed         String     @db.Text
+  // How many steps the chicken successfully crossed (0-8)
+  stepsReached Int        @default(0) @map("steps_reached")
+  // cashoutMult null = game still active OR busted; set on cashout
+  cashoutMult  Decimal?   @map("cashout_mult") @db.Decimal(10, 4)
+  payout       BigInt     @default(0)
+  fee          BigInt     @default(0)
+  status       GameStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  endedAt      DateTime?  @map("ended_at")
 
-  bets         Bet[]
+  user         User       @relation(fields: [userId], references: [id])
   transactions Transaction[]
 
-  @@map("rounds")
+  @@map("games")
 }
 
-// COOLDOWN is used on GameState only (between rounds).
-// Round rows never use COOLDOWN - they go BETTING -> RUNNING -> CRASHED.
-enum RoundPhase {
-  COOLDOWN
-  BETTING
-  RUNNING
-  CRASHED
+enum GameStatus {
+  ACTIVE
+  CASHED_OUT
+  BUSTED
 
-  @@map("round_phase")
-}
-
-model Bet {
-  id          Int      @id @default(autoincrement())
-  userId      Int      @map("user_id")
-  roundId     Int      @map("round_id")
-  amount      BigInt
-  cashoutMult Decimal? @map("cashout_mult") @db.Decimal(10, 4)
-  payout      BigInt   @default(0)
-  fee         BigInt   @default(0)
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  user        User     @relation(fields: [userId], references: [id])
-  round       Round    @relation(fields: [roundId], references: [id])
-
-  @@unique([userId, roundId])
-  @@map("bets")
-}
-
-model GameState {
-  id               Int        @id @default(1)
-  roundId          Int        @map("round_id")
-  phase            RoundPhase @default(COOLDOWN)
-  multiplier       Decimal    @default(1.00) @db.Decimal(10, 4)
-  phaseEndsAt      DateTime   @map("phase_ends_at")
-  runningStartedAt DateTime?  @map("running_started_at")
-  updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at")
-
-  @@map("game_state")
+  @@map("game_status")
 }
